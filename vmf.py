@@ -259,17 +259,82 @@ class VMF(object):
         except KeyError:
             return None
             
-    def clean_data(self):
-        ''' Walks through the raw VMF data and removes any objects that have 
-        been marked for deletion.
+    def add_object_to_data(self, vmfClass, id, parentInfo):
+        ''' Adds an object with the specified VMF class and ID to the VMF data 
+        under the given parent object.
         
-        We mark objects for deletion by clearing all their existing entries 
-        and adding the special dictionary entry {None : None}.
+        The 'parentInfo' argument may be either a tuple pair of the form 
+        (vmfClass, id), or None. If the argument is None, this method will add 
+        the VMF object to the root VMF data (i.e. self.vmfData) and will not 
+        update the parent dictionary (i.e. self.parentDict), because it is not 
+        necessary to do so.
+        
+        This method requires that the given target object exist as an entry in 
+        one of the self.sideDict, self.solidDict, etc. VMF object dictionaries 
+        before invocation.
         
         '''
         
-        pass    # TODO: Implement this.
+        vmfObject = self.get_object(vmfClass, id)
         
+        if parentInfo is None:
+            # Special case where we add the VMF object to the root VMF data.
+            parent = self.vmfData
+            
+        else:
+            parent = self.get_object(*parentInfo)
+            
+            # Update the parent dictionary with the object's new parent info.
+            self.parentDict[(vmfClass, id)] = parentInfo
+            
+        assert isinstance(parent, dict)
+        
+        try:
+            parent[vmfClass].append(vmfObject)
+        except KeyError:
+            parent[vmfClass] = vmfObject
+        except AttributeError:
+            assert isinstance(parent[vmfClass], dict)
+            parent[vmfClass] = [parent[vmfClass], vmfObject]
+            
+    def remove_object_from_data(self, vmfClass, id):
+        ''' Removes an object from its current location in the VMF data.
+        
+        This does NOT remove the object from the master dictionaries of VMF 
+        objects, e.g. self.solidDict, self.sideDict, etc.
+        
+        '''
+        
+        vmfObject = self.get_object(vmfClass, id)
+        parentInfo = self.get_object_parent_info(vmfClass, id)
+        
+        if parentInfo is None:
+            # Special case where we remove the VMF object from the root VMF 
+            # data.
+            parent = self.vmfData
+            
+        else:
+            parent = self.get_object(*parentInfo)
+            
+            # Remove the corresponding entry in the parent dictionary.
+            del self.parentDict[(vmfClass, id)]
+            
+        assert isinstance(parent, dict)
+        
+        # Remove the object from its current parent.
+        objectEntry = parent[vmfClass]
+        try:
+            objectEntry.remove(vmfObject)
+        except AttributeError:
+            # The entry is a dict, i.e. it's the last entry. Remove it.
+            assert isinstance(objectEntry, dict)
+            del parent[vmfClass]
+        else:
+            # The entry is now a singleton list. Flatten it to simply refer to 
+            # the object itself.
+            if len(objectEntry) == 1:
+                parent[vmfClass] = objectEntry[0]
+                
     def apply_deltas(self, deltas):
         ''' Applies the given deltas to the VMF data and increments the VMF 
         revision number.
@@ -278,28 +343,9 @@ class VMF(object):
         
         for delta in deltas:
             if isinstance(delta, AddObject):
-                # Determine under which parent object this new object should 
-                # be added.
-                if delta.parent is None:
-                    parentObject = self.vmfData
-                else:
-                    parentObject = self.get_object(*delta.parent)
-                    self.parentDict[(delta.vmfClass, delta.id)] = delta.parent
-                    
                 # Create the new object.
                 newObject = OrderedDict(id=delta.id)
                 
-                # Add the object to its designated parent.
-                try:
-                    parentObject[delta.vmfClass].append(newObject)
-                except KeyError:
-                    parentObject[delta.vmfClass] = newObject
-                except AttributeError:
-                    parentObject[delta.vmfClass] = [
-                        parentObject[delta.vmfClass],
-                        newObject,
-                    ]
-                    
                 # Add the new object to the appropriate object dictionary.
                 {
                     VMF.SOLID   :   self.solidDict,
@@ -307,12 +353,22 @@ class VMF(object):
                     VMF.ENTITY  :   self.entityDict,
                 }[delta.vmfClass][delta.id] = newObject
                 
+                # Add the object to the VMF data under its designated parent.
+                self.add_object_to_data(
+                        delta.vmfClass,
+                        delta.id,
+                        delta.parent,
+                    )
+                    
             elif isinstance(delta, RemoveObject):
-                vmfObject = self.get_object(delta.vmfClass, delta.id)
+                self.remove_object_from_data(delta.vmfClass, delta.id)
                 
-                # Mark the object for deletion.
-                vmfObject.clear()
-                vmfObject[None] = None
+                # Remove the object from the appropriate object dictionary.
+                del {
+                    VMF.SOLID   :   self.solidDict,
+                    VMF.SIDE    :   self.sideDict,
+                    VMF.ENTITY  :   self.entityDict,
+                }[delta.vmfClass][delta.id]
                 
             elif (isinstance(delta, AddProperty) or 
                     isinstance(delta, ChangeProperty)):
@@ -327,69 +383,27 @@ class VMF(object):
             elif isinstance(delta, TieSolid):
                 self.brushEntityDict[delta.solidId] = delta.entityId
                 
-                solid = self.get_solid(delta.solidId)
+                self.remove_object_from_data(VMF.SOLID, delta.solidId)
                 
-                # Get the solid's parent.
-                # We directly use the parent dictionary here instead of the 
-                # helper method, in order to crash early with an appropriate
-                # error message if something absolutely bizarre happens.
-                solidParentInfo = self.parentDict[(VMF.SOLID, delta.solidId)]
-                solidParent = self.get_object(*solidParentInfo)
-                
-                # Remove the solid from its original parent.
-                solidEntry = solidParent[VMF.SOLID]
-                if isinstance(solidEntry, dict):
-                    del solidParent[VMF.SOLID]
-                elif isinstance(solidEntry, list):
-                    solidEntry.remove(solid)
-                    
                 # Add the solid to the specified entity.
-                entity = self.get_entity(delta.entityId)
-                try:
-                    entity[VMF.SOLID].append(solid)
-                except KeyError:
-                    entity[VMF.SOLID] = solid
-                except AttributeError:
-                    entity[VMF.SOLID] = [entity[VMF.SOLID], solid]
+                self.add_object_to_data(
+                        VMF.SOLID,
+                        delta.solidId,
+                        (VMF.ENTITY, delta.entityId),
+                    )
                     
-                # Update the solid's parent to the entity.
-                self.parentDict[(VMF.SOLID, delta.solidId)] = (
-                    VMF.ENTITY,
-                    get_id(entity),
-                )
-                
             elif isinstance(delta, UntieSolid):
                 del self.brushEntityDict[delta.solidId]
                 
-                solid = self.get_solid(delta.solidId)
+                self.remove_object_from_data(VMF.SOLID, delta.solidId)
                 
-                # Get the solid's parent.
-                # We directly use the parent dictionary here, for the same 
-                # reason as above.
-                solidParentInfo = self.parentDict[(VMF.SOLID, delta.solidId)]
-                solidParent = self.get_object(*solidParentInfo)
-                
-                # Remove the solid from its original parent.
-                solidEntry = solidParent[VMF.SOLID]
-                if isinstance(solidEntry, dict):
-                    del solidParent[VMF.SOLID]
-                elif isinstance(solidEntry, list):
-                    solidEntry.remove(solid)
-                    
                 # Add the solid to the world.
-                try:
-                    self.world[VMF.SOLID].append(solid)
-                except KeyError:
-                    self.world[VMF.SOLID] = solid
-                except AttributeError:
-                    self.world[VMF.SOLID] = [self.world[VMF.SOLID], solid]
+                self.add_object_to_data(
+                        VMF.SOLID,
+                        delta.solidId,
+                        (VMF.WORLD, get_id(self.world)),
+                    )
                     
-                # Update the solid's parent to the world.
-                self.parentDict[(VMF.SOLID, delta.solidId)] = (
-                    VMF.WORLD,
-                    get_id(self.world),
-                )
-                
         # TODO: Increment revision number.
         
         
