@@ -55,3 +55,7 @@ docs/_build/
 
 # PyBuilder
 target/
+
+# Some output files that I don't need to be included in the repo
+out.txt
+out.vmf
