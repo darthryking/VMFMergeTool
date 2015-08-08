@@ -9,9 +9,10 @@ VMF Merge Tool
 
 """
 
-__version__ = '0.0.0 DEV'
+__version__ = '0.0.0a DEV'
 
 import sys
+import time
 from argparse import ArgumentParser
 
 from vmf import VMF, load_vmfs, get_parent, compare_vmfs
@@ -92,7 +93,10 @@ def main():
             )
         return 1
         
+    startTime = time.time()
+    
     # Load all VMFs.
+    print "Loading VMFs..."
     vmfs = load_vmfs(vmfPaths)
     
     # Determine the parent VMF.
@@ -105,6 +109,7 @@ def main():
     children = [vmf for vmf in vmfs if vmf is not parent]
     
     # Generate lists of deltas for each child.
+    print "Generating delta lists..."
     deltaLists = [compare_vmfs(parent, child) for child in children]
     
     if dumpIndividual:
@@ -116,6 +121,7 @@ def main():
         
     # Merge the delta lists into a single list of deltas, to be applied on top 
     # of the parent.
+    print "Merging deltas..."
     try:
         mergedDeltas = merge_delta_lists(deltaLists, aggressive=aggressive)
     except DeltaMergeConflict as e:
@@ -127,10 +133,15 @@ def main():
         return 0
         
     # Apply the merged deltas to the parent.
+    print "Applying deltas..."
     parent.apply_deltas(mergedDeltas)
     
     # Write the mutated parent to the target VMF path.
+    print "Writing merged VMF..."
     parent.write_path('out.vmf')
+    
+    print "Done!"
+    print "Total time: {} s".format(time.time() - startTime)
     
     return 0
     

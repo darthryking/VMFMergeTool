@@ -244,8 +244,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
                     print '\t', delta
                     print '\t', other
                     
-                    # Discard both deltas.
-                    delta.shouldDiscard = True
+                    # Discard only the RemoveObject delta, because it makes 
+                    # human intervention a bit easier.
                     other.shouldDiscard = True
                     
                     raise DeltaMergeConflict
@@ -298,8 +298,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
                     print '\t', delta
                     print '\t', other
                     
-                    # Discard both deltas.
-                    delta.shouldDiscard = True
+                    # Discard only the RemoveProperty delta, because it makes 
+                    # human intervention a bit easier.
                     other.shouldDiscard = True
                     
                     raise DeltaMergeConflict

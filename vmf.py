@@ -227,13 +227,24 @@ class VMF(object):
         return self.entityDict.itervalues()
         
     def iter_objects(self):
+        ''' Returns an iterator over all the relevant VMF objects in the VMF.
+        
+        Note that Entities come before Solids and Sides in this iterator. This 
+        is because we want to iterate over higher-level container objects 
+        before reaching the lower-level container objects. This ensures that 
+        higher-level containers can be found and created before reaching 
+        lower-level containers that are dependent on those higher-level 
+        containers.
+        
+        '''
+        
         return (
             (vmfClass, vmfObject)
             for vmfClass, iterator in (
                         (VMF.WORLD, (self.world,)),
+                        (VMF.ENTITY, self.iter_entities()),
                         (VMF.SOLID, self.iter_solids()),
                         (VMF.SIDE, self.iter_sides()),
-                        (VMF.ENTITY, self.iter_entities()),
                     )
                 for vmfObject in iterator
         )
@@ -341,6 +352,11 @@ class VMF(object):
         
         '''
         
+        # Keep track of all objects that have been removed. This way, we can 
+        # know when removing a sub-object is redundant (since its parent would 
+        # have already been removed).
+        removedObjectsInfoSet = set()
+        
         for delta in deltas:
             if isinstance(delta, AddObject):
                 # Create the new object.
@@ -361,14 +377,25 @@ class VMF(object):
                     )
                     
             elif isinstance(delta, RemoveObject):
-                self.remove_object_from_data(delta.vmfClass, delta.id)
-                
-                # Remove the object from the appropriate object dictionary.
-                del {
-                    VMF.SOLID   :   self.solidDict,
-                    VMF.SIDE    :   self.sideDict,
-                    VMF.ENTITY  :   self.entityDict,
-                }[delta.vmfClass][delta.id]
+                parentInfo = self.get_object_parent_info(
+                        delta.vmfClass,
+                        delta.id,
+                    )
+                    
+                # Only remove the object if its parent hasn't already been 
+                # removed. If parentInfo is None, this still works.
+                if parentInfo not in removedObjectsInfoSet:
+                    self.remove_object_from_data(delta.vmfClass, delta.id)
+                    
+                    # Remove the object from its object dictionary.
+                    del {
+                        VMF.SOLID   :   self.solidDict,
+                        VMF.SIDE    :   self.sideDict,
+                        VMF.ENTITY  :   self.entityDict,
+                    }[delta.vmfClass][delta.id]
+                    
+                # Keep track of everything that we have removed so far.
+                removedObjectsInfoSet.add((delta.vmfClass, delta.id))
                 
             elif (isinstance(delta, AddProperty) or 
                     isinstance(delta, ChangeProperty)):
@@ -446,6 +473,7 @@ def compare_vmfs(parent, child):
     
     # Relates the IDs of objects in the child to their corresponding new IDs 
     # as part of the parent, for newly-added objects.
+    # Keys are stored in (vmfClass, id) tuple form.
     newObjectIdDict = {}
     
     # Check for new objects
@@ -463,11 +491,14 @@ def compare_vmfs(parent, child):
             # Get the parent information for the new object.
             newObjectParentInfo = child.get_object_parent_info(vmfClass, id)
             
-            # The parent might be a new object. If so, correlate it with the 
-            # proper new ID.
+            # The new object's designated parent object might also be a new 
+            # object. If so, correlate it with the proper new ID.
             if newObjectParentInfo in newObjectIdDict:
-                newParentId = newObjectIdDict[newObjectParentInfo]
-                newObjectParentInfo = (newObjectParentInfo[0], newParentId)
+                newObjectParentId = newObjectIdDict[newObjectParentInfo]
+                newObjectParentInfo = (
+                    newObjectParentInfo[0],
+                    newObjectParentId,
+                )
                 
             newDelta = AddObject(newObjectParentInfo, vmfClass, newId)
             deltas.append(newDelta)
@@ -538,12 +569,15 @@ def compare_vmfs(parent, child):
     # Check for newly-tied solids.
     for solidId, entityId in child.brushEntityDict.iteritems():
         if solidId not in parent.brushEntityDict:
-            # Retrieve the new Entity's ID as part of the parent.
-            newId = newObjectIdDict[(VMF.ENTITY, entityId)]
-            
-            newDelta = TieSolid(solidId, newId)
-            deltas.append(newDelta)
-            
+            # Don't bother tying the solid if we already have an AddObject 
+            # delta that adds it as the child of an Entity object.
+            if (VMF.SOLID, solidId) not in newObjectIdDict:
+                # Retrieve the new Entity's ID as part of the parent.
+                newId = newObjectIdDict[(VMF.ENTITY, entityId)]
+                
+                newDelta = TieSolid(solidId, newId)
+                deltas.append(newDelta)
+                
     # Check for untied solids.
     for solidId, entityId in parent.brushEntityDict.iteritems():
         if solidId not in child.brushEntityDict:
