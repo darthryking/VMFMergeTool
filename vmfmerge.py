@@ -3,7 +3,7 @@
 vmfmerge.py
 By DKY
 
-Version 0.0.0 DEV
+Version 0.0.0a DEV
 
 VMF Merge Tool
 

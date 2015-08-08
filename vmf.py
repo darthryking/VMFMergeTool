@@ -383,17 +383,18 @@ class VMF(object):
                     )
                     
                 # Only remove the object if its parent hasn't already been 
-                # removed. If parentInfo is None, this still works.
+                # removed.
+                # Note: If parentInfo is None, this still works.
                 if parentInfo not in removedObjectsInfoSet:
                     self.remove_object_from_data(delta.vmfClass, delta.id)
                     
-                    # Remove the object from its object dictionary.
-                    del {
-                        VMF.SOLID   :   self.solidDict,
-                        VMF.SIDE    :   self.sideDict,
-                        VMF.ENTITY  :   self.entityDict,
-                    }[delta.vmfClass][delta.id]
-                    
+                # Remove the object from the appropriate object dictionary.
+                del {
+                    VMF.SOLID   :   self.solidDict,
+                    VMF.SIDE    :   self.sideDict,
+                    VMF.ENTITY  :   self.entityDict,
+                }[delta.vmfClass][delta.id]
+                
                 # Keep track of everything that we have removed so far.
                 removedObjectsInfoSet.add((delta.vmfClass, delta.id))
                 
