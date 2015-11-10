@@ -570,8 +570,8 @@ def compare_vmfs(parent, child):
     # Check for newly-tied solids.
     for solidId, entityId in child.brushEntityDict.iteritems():
         if solidId not in parent.brushEntityDict:
-            # Don't bother tying the solid if we already have an AddObject 
-            # delta that adds it as the child of an Entity object.
+            # Only tie the solid if we don't already have an AddObject delta
+            # that adds it as the child of an Entity object.
             if (VMF.SOLID, solidId) not in newObjectIdDict:
                 # Retrieve the new Entity's ID as part of the parent.
                 newId = newObjectIdDict[(VMF.ENTITY, entityId)]
