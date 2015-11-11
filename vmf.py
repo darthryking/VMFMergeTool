@@ -610,12 +610,25 @@ def get_parent(vmfs):
     return parent
     
     
-def load_vmfs(vmfPaths):
+def load_vmfs(vmfPaths, output=True):
     """ Takes a list of paths to VMF files and returns a list of those VMFs, 
     parsed and ready for processing.
     
+    If 'output' is True, writes progress to stdout.
+    
     """
     
-    return [VMF.from_path(path) for path in vmfPaths]
+    vmfs = []
+    for i, path in enumerate(vmfPaths):
+        if output:
+            print "\t* ({}/{}) Loading {}...".format(
+                    i + 1,
+                    len(vmfPaths),
+                    path,
+                )
+                
+        vmfs.append(VMF.from_path(path))
+        
+    return vmfs
     
     
