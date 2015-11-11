@@ -12,7 +12,7 @@ VMF Merge Tool
 __version__ = '0.0.0a DEV'
 
 import sys
-import time
+from datetime import datetime
 from argparse import ArgumentParser
 
 from vmf import VMF, load_vmfs, get_parent, compare_vmfs
@@ -31,23 +31,23 @@ _parser.add_argument(
 _parser.add_argument(
         '-v', '--verbose',
         action='store_true',
-        help='Noisily display progress messages throughout the procedure.',
+        help="Noisily display progress messages throughout the procedure.",
     )
     
 _parser.add_argument(
         'vmfs',
         nargs='+',
         metavar='vmf',
-        help='The name of a *.vmf file, or the path to a *.vmf file.',
+        help="The name of a *.vmf file, or the path to a *.vmf file.",
     )
     
 _parser.add_argument(
         '-n', '--no-auto-parent',
         action='store_true',
         help=
-            'Do not try to automatically figure out which VMF is the parent '
-            'VMF. Instead, simply assume that the first VMF in the argument '
-            'list is the parent. (Can be dangerous-- Use with care!)'
+            "Do not try to automatically figure out which VMF is the parent "
+            "VMF. Instead, simply assume that the first VMF in the argument "
+            "list is the parent. (Can be dangerous-- Use with care!)"
             ,
     )
     
@@ -55,8 +55,8 @@ _parser.add_argument(
         '-i', '--dump-individual',
         action='store_true',
         help=
-            'Instead of merging, output a list of individual per-file deltas '
-            'to stdout.'
+            "Instead of merging, output a list of individual per-file deltas "
+            "to stdout."
             ,
     )
     
@@ -64,15 +64,15 @@ _parser.add_argument(
         '-p', '--dump-proposed',
         action='store_true',
         help=
-            'Instead of merging, output a list of all proposed merge deltas '
-            'to stdout.'
+            "Instead of merging, output a list of all proposed merge deltas "
+            "to stdout."
             ,
     )
     
 _parser.add_argument(
         '-A', '--aggressive',
         action='store_true',
-        help='Enable aggressive conflict resolution.',
+        help="Enable aggressive conflict resolution.",
     )
     
 _args = _parser.parse_args()
@@ -93,7 +93,7 @@ def main():
             )
         return 1
         
-    startTime = time.time()
+    startTime = datetime.now()
     
     # Load all VMFs.
     print "Loading VMFs..."
@@ -141,7 +141,7 @@ def main():
     parent.write_path('out.vmf')
     
     print "Done!"
-    print "Total time: {} s".format(time.time() - startTime)
+    print "Total time: {}".format(datetime.now() - startTime)
     
     return 0
     

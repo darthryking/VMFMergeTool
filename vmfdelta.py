@@ -4,6 +4,8 @@ vmfdelta.py
 
 """
 
+from collections import OrderedDict
+
 
 class DeltaMergeConflict(Exception):
     """ A conflict was detected while merging deltas. """
@@ -24,16 +26,26 @@ class VMFDelta(object):
     
     """
     
-    def __init__(self):
-        # Whether or not we should discard this delta at the end of the delta 
-        # merge phase.
-        self.shouldDiscard = False
+    def __init__(self, originFile=None):
+        # The file from which this delta originated.
+        self.originFile = originFile
         
-    def is_same_change_as(self, other):
-        ''' Whether or not this delta represents the same conceptual kind of 
-        change as another. Useful for merging and conflict detection.
+    def __eq__(self, other):
+        ''' Two deltas are equivalent when they represent the same conceptual 
+        kind of change as another, without regard to the details of such a 
+        change. For instance, two ChangeProperty deltas of the same key on the 
+        same object are equal, no matter what their respective values are. 
+        This is used for merging and conflict detection.
         
-        Assumes that 'other' is of the same type as 'self'.
+        Two deltas of different types never compare equal.
+        
+        '''
+        
+        return NotImplementedError
+        
+    def __hash__(self):
+        ''' Used to ensure that equivalent deltas are correctly hashed in 
+        sets.
         
         '''
         
@@ -54,9 +66,12 @@ class AddObject(VMFDelta):
                 repr(self.id),
             )
             
-    def is_same_change_as(self, other):
+    def __eq__(self, other):
         # AddObject deltas are always completely unique.
         return False
+        
+    def __hash__(self):
+        return hash((self.parent, self.vmfClass, self.id))
         
         
 class RemoveObject(VMFDelta):
@@ -71,8 +86,15 @@ class RemoveObject(VMFDelta):
                 repr(self.id),
             )
             
-    def is_same_change_as(self, other):
-        return self.vmfClass == other.vmfClass and self.id == other.id
+    def __eq__(self, other):
+        return (
+            type(self) is type(other) and 
+            self.vmfClass == other.vmfClass and 
+            self.id == other.id
+        )
+        
+    def __hash__(self):
+        return hash((self.vmfClass, self.id))
         
         
 class ChangeObject(VMFDelta):
@@ -87,8 +109,15 @@ class ChangeObject(VMFDelta):
                 repr(self.id),
             )
             
-    def is_same_change_as(self, other):
-        return self.vmfClass == other.vmfClass and self.id == other.id
+    def __eq__(self, other):
+        return (
+            type(self) is type(other) and 
+            self.vmfClass == other.vmfClass and 
+            self.id == other.id
+        )
+        
+    def __hash__(self):
+        return hash((self.vmfClass, self.id))
         
         
 class AddProperty(VMFDelta):
@@ -107,12 +136,16 @@ class AddProperty(VMFDelta):
                 repr(self.value),
             )
             
-    def is_same_change_as(self, other):
+    def __eq__(self, other):
         return (
+            type(self) is type(other) and 
             self.vmfClass == other.vmfClass and
             self.id == other.id and
             self.key == other.key
         )
+        
+    def __hash__(self):
+        return hash((self.vmfClass, self.id, self.key))
         
         
 class RemoveProperty(VMFDelta):
@@ -129,12 +162,16 @@ class RemoveProperty(VMFDelta):
                 repr(self.key),
             )
             
-    def is_same_change_as(self, other):
+    def __eq__(self, other):
         return (
+            type(self) is type(other) and 
             self.vmfClass == other.vmfClass and
             self.id == other.id and
             self.key == other.key
         )
+        
+    def __hash__(self):
+        return hash((self.vmfClass, self.id, self.key))
         
         
 class ChangeProperty(VMFDelta):
@@ -153,12 +190,16 @@ class ChangeProperty(VMFDelta):
                 repr(self.value),
             )
             
-    def is_same_change_as(self, other):
+    def __eq__(self, other):
         return (
+            type(self) is type(other) and 
             self.vmfClass == other.vmfClass and
             self.id == other.id and
             self.key == other.key
         )
+        
+    def __hash__(self):
+        return hash((self.vmfClass, self.id, self.key))
         
         
 class TieSolid(VMFDelta):
@@ -173,8 +214,14 @@ class TieSolid(VMFDelta):
                 repr(self.entityId),
             )
             
-    def is_same_change_as(self, other):
-        return self.solidId == other.solidId
+    def __eq__(self, other):
+        return (
+            type(self) is type(other) and 
+            self.solidId == other.solidId
+        )
+        
+    def __hash__(self):
+        return hash(self.solidId)
         
         
 class UntieSolid(VMFDelta):
@@ -187,8 +234,14 @@ class UntieSolid(VMFDelta):
                 repr(self.solidId)
             )
             
-    def is_same_change_as(self, other):
-        return self.solidId == other.solidId
+    def __eq__(self, other):
+        return (
+            type(self) is type(other) and 
+            self.solidId == other.solidId
+        )
+        
+    def __hash__(self):
+        return hash(self.solidId)
         
         
 def merge_delta_lists(deltaLists, aggressive=False):
@@ -214,182 +267,151 @@ def merge_delta_lists(deltaLists, aggressive=False):
         UntieSolid,
     )
     
-    # We keep lists of each type of delta, so that we can merge or produce 
-    # conflict warnings based on the existence of two compatible/incompatible 
-    # deltas at once.
-    deltaListsDict = {
-        deltaType : []
-        for deltaType in deltaTypes
-    }
+    # For keeping track of what deltas have been merged so far.
+    # Maps deltas to themselves, so that they can be retrieved for comparison.
+    mergedDeltasDict = OrderedDict()
     
     def merge(delta):
         ''' Attempts to merge the given delta with an existing one.
         
         Fails silently if there are no candidates for merging.
         
-        If a merge conflict is detected, emits a warning, marks the 
-        conflicting deltas to be discarded, and raises DeltaMergeConflict.
+        If a merge conflict is detected, emits a warning, discards the 
+        conflicting deltas, and raises DeltaMergeConflict.
         
         '''
         
         if isinstance(delta, ChangeObject):
             # Check for conflicts with RemoveObject deltas.
-            for other in deltaListsDict[RemoveObject]:
-                if delta.vmfClass == other.vmfClass and delta.id == other.id:
+            removeObjectDelta = RemoveObject(delta.vmfClass, delta.id)
+            if removeObjectDelta in mergedDeltasDict:
+                other = mergedDeltasDict[removeObjectDelta]
+                
+                # Conflict!
+                print (
+                    "CONFLICT WARNING: ChangeObject delta conflicts with "
+                    "RemoveObject delta!"
+                )
+                print '\t', delta
+                print '\t', other
+                
+                # Discard the RemoveObject delta and insert the ChangeObject 
+                # delta, because it makes human intervention a bit easier.
+                del mergedDeltasDict[removeObjectDelta]
+                mergedDeltasDict[delta] = delta
+                
+                raise DeltaMergeConflict
+                
+        elif isinstance(delta, AddProperty):
+            # Check for conflicts with other AddProperty deltas.
+            if delta in mergedDeltasDict:
+                other = mergedDeltasDict[delta]
+                
+                if other.value != delta.value:
                     # Conflict!
                     print (
-                        "CONFLICT WARNING: ChangeObject delta conflicts with "
-                        "RemoveObject delta!"
+                        "CONFLICT WARNING: AddProperty conflict detected!"
                     )
                     print '\t', delta
                     print '\t', other
                     
-                    # Discard only the RemoveObject delta, because it makes 
-                    # human intervention a bit easier.
-                    other.shouldDiscard = True
+                    # Discard the conflicting delta and don't try to insert 
+                    # the current delta into the dictionary.
+                    del mergedDeltasDict[other]
                     
                     raise DeltaMergeConflict
                     
-            # Attempt to merge.
-            for other in deltaListsDict[ChangeObject]:
-                if delta.is_same_change_as(other):
-                    # Merge is possible. Discard this delta.
-                    delta.shouldDiscard = True
-                    
-        elif isinstance(delta, RemoveObject):
-            # Check for other RemoveObject deltas that we can merge with.
-            for other in deltaListsDict[RemoveObject]:
-                if delta.is_same_change_as(other):
-                    delta.shouldDiscard = True
-                    
-        elif isinstance(delta, AddProperty):
-            for other in deltaListsDict[AddProperty]:
-                if delta.is_same_change_as(other):
-                    if other.value == delta.value:
-                        # Can be merged.
-                        delta.shouldDiscard = True
-                        
-                    else:
-                        # Conflict!
-                        print (
-                            "CONFLICT WARNING: AddProperty conflict detected!"
-                        )
-                        print '\t', delta
-                        print '\t', other
-                        
-                        # Discard both deltas.
-                        delta.shouldDiscard = True
-                        other.shouldDiscard = True
-                        
-                        raise DeltaMergeConflict
-                        
         elif isinstance(delta, ChangeProperty):
             # Check for conflicts with RemoveProperty deltas.
-            for other in deltaListsDict[RemoveProperty]:
-                if (delta.vmfClass == other.vmfClass and 
-                        delta.id == other.id and
-                        delta.key == other.key):
-                        
+            removePropertyDelta = RemoveProperty(
+                    delta.vmfClass,
+                    delta.id,
+                    delta.key,
+                )
+            if removePropertyDelta in mergedDeltasDict:
+                # Conflict!
+                print (
+                    "CONFLICT WARNING: ChangeProperty delta conflicts "
+                    "with RemoveProperty delta!"
+                )
+                print '\t', delta
+                print '\t', other
+                
+                # Discard the RemoveProperty delta and insert the 
+                # ChangeProperty delta, because it makes human intervention a 
+                # bit easier.
+                del mergedDeltasDict[removePropertyDelta]
+                mergedDeltasDict[delta] = delta
+                
+                raise DeltaMergeConflict
+                
+            # Check for conflicts with other ChangeProperty deltas.
+            if delta in mergedDeltasDict:
+                other = mergedDeltasDict[delta]
+                
+                if other.value != delta.value:
                     # Conflict!
                     print (
-                        "CONFLICT WARNING: ChangeProperty delta conflicts "
-                        "with RemoveProperty delta!"
+                        "CONFLICT WARNING: ChangeProperty conflict "
+                        "detected!"
                     )
                     print '\t', delta
                     print '\t', other
                     
-                    # Discard only the RemoveProperty delta, because it makes 
-                    # human intervention a bit easier.
-                    other.shouldDiscard = True
+                    # Discard the conflicting delta and don't try to insert 
+                    # the current delta into the dictionary.
+                    del mergedDeltasDict[other]
                     
                     raise DeltaMergeConflict
                     
-            # Attempt to merge.
-            for other in deltaListsDict[ChangeProperty]:
-                if delta.is_same_change_as(other):
-                    if other.value == delta.value:
-                        # Merge is possible. Discard this delta.
-                        delta.shouldDiscard = True
-                        
-                    else:
-                        # Conflict!
-                        print (
-                            "CONFLICT WARNING: ChangeProperty conflict "
-                            "detected!"
-                        )
-                        print '\t', delta
-                        print '\t', other
-                        
-                        # Discard both deltas.
-                        delta.shouldDiscard = True
-                        other.shouldDiscard = True
-                        
-                        raise DeltaMergeConflict
-                        
-        elif isinstance(delta, RemoveProperty):
-            # Check for other RemoveProperty deltas that we can merge with.
-            for other in deltaListsDict[RemoveProperty]:
-                if delta.is_same_change_as(other):
-                    delta.shouldDiscard = True
-                    
         elif isinstance(delta, TieSolid):
-            # Check for other TieSolid deltas that we can merge with.
-            for other in deltaListsDict[TieSolid]:
-                if delta.is_same_change_as(other):
-                    if delta.entityId == other.entityId:
-                        # Merge is possible. Discard this delta.
-                        delta.shouldDiscard = True
-                        
-                    else:
-                        # Conflict!
-                        print (
-                            "CONFLICT WARNING: TieSolid conflict detected!"
-                        )
-                        print '\t', delta
-                        print '\t', other
-                        
-                        # Discard both deltas.
-                        delta.shouldDiscard = True
-                        other.shouldDiscard = True
-                        
-                        raise DeltaMergeConflict
-                        
-        elif isinstance(delta, UntieSolid):
-            # Check for other UntieSolid deltas that we can merge with.
-            for other in deltaListsDict[UntieSolid]:
-                if delta.is_same_change_as(other):
-                    delta.shouldDiscard = True
+            # Check for conflicts with other TieSolid deltas.
+            if delta in mergedDeltasDict:
+                other = mergedDeltasDict[delta]
+                
+                if other.entityId != delta.entityId:
+                    # Conflict!
+                    print (
+                        "CONFLICT WARNING: TieSolid conflict detected!"
+                    )
+                    print '\t', delta
+                    print '\t', other
                     
+                    # Discard the conflicting delta and don't try to insert 
+                    # the current delta into the dictionary.
+                    del mergedDeltasDict[other]
+                    
+                    raise DeltaMergeConflict
+                    
+        # Merge the delta into the dictionary.
+        mergedDeltasDict[delta] = delta
+        
     ##################
     # End of merge() #
     ##################
     
-    conflict = False
-    for deltaType in deltaTypes:
-        for deltas in deltaLists:
-            for delta in deltas:
-                if isinstance(delta, deltaType):
-                    # Attempt to merge, if possible.
-                    try:
-                        merge(delta)
-                    except DeltaMergeConflict:
-                        conflict = True
-                        
-                    # Add the delta to the dictionary regardless of whether or 
-                    # not the merge was successful. If it was merged, it was 
-                    # marked as discarded and will be cleaned up later on.
-                    deltaListsDict[deltaType].append(delta)
-                    
-    # Now that we have all our deltas merged and ready, put them all into a 
-    # single list of deltas to be returned.
-    mergedDeltas = [
-        delta
-        for deltaType in deltaTypes
-            for delta in deltaListsDict[deltaType]
-                if not delta.shouldDiscard
-    ]
+    # Maps delta types to lists containing all deltas of that type.
+    deltaTypeListsDict = OrderedDict(
+            (deltaType, [])
+            for deltaType in deltaTypes
+        )
+        
+    # Build the deltaTypeListsDict.
+    for deltas in deltaLists:
+        for delta in deltas:
+            deltaTypeListsDict[type(delta)].append(delta)
+            
+    conflicted = False
+    for deltaType, deltas in deltaTypeListsDict.iteritems():
+        for delta in deltas:
+            try:
+                merge(delta)
+            except DeltaMergeConflict:
+                conflicted = True
+                
+    mergedDeltas = mergedDeltasDict.keys()
     
-    if conflict:
+    if conflicted:
         raise DeltaMergeConflict(mergedDeltas)
     else:
         return mergedDeltas
