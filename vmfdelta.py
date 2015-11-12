@@ -41,7 +41,7 @@ class VMFDelta(object):
         
         '''
         
-        return NotImplementedError
+        raise NotImplementedError
         
     def __hash__(self):
         ''' Used to ensure that equivalent deltas are correctly hashed in 
@@ -272,9 +272,7 @@ def merge_delta_lists(deltaLists, aggressive=False):
     mergedDeltasDict = OrderedDict()
     
     def merge(delta):
-        ''' Attempts to merge the given delta with an existing one.
-        
-        Fails silently if there are no candidates for merging.
+        ''' Attempts to merge the given delta into the mergedDeltasDict.
         
         If a merge conflict is detected, emits a warning, discards the 
         conflicting deltas, and raises DeltaMergeConflict.
@@ -392,8 +390,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
     
     # Maps delta types to lists containing all deltas of that type.
     deltaTypeListsDict = OrderedDict(
-            (deltaType, [])
-            for deltaType in deltaTypes
+            (DeltaType, [])
+            for DeltaType in deltaTypes
         )
         
     # Build the deltaTypeListsDict.
@@ -409,6 +407,7 @@ def merge_delta_lists(deltaLists, aggressive=False):
             except DeltaMergeConflict:
                 conflicted = True
                 
+    # The result is simply the list of keys in the mergedDeltasDict.
     mergedDeltas = mergedDeltasDict.keys()
     
     if conflicted:

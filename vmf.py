@@ -265,11 +265,8 @@ class VMF(object):
         
         '''
         
-        try:
-            return self.parentDict[(vmfClass, id)]
-        except KeyError:
-            return None
-            
+        return self.parentDict.get((vmfClass, id), None)
+        
     def add_object_to_data(self, vmfClass, id, parentInfo):
         ''' Adds an object with the specified VMF class and ID to the VMF data 
         under the given parent object.
@@ -341,9 +338,9 @@ class VMF(object):
             assert isinstance(objectEntry, dict)
             del parent[vmfClass]
         else:
-            # The entry is now a singleton list. Flatten it to simply refer to 
-            # the object itself.
             if len(objectEntry) == 1:
+                # The entry is now a singleton list. Flatten it to simply 
+                # refer to the object itself.
                 parent[vmfClass] = objectEntry[0]
                 
     def apply_deltas(self, deltas):
