@@ -260,7 +260,7 @@ class AddOutput(VMFDelta):
                 repr(self.outputId),
             )
             
-    def __eq__(self):
+    def __eq__(self, other):
         return (
             type(self) is type(other) and
             self.entityId == other.entityId and
