@@ -310,14 +310,6 @@ class VMF(object):
         
         add_object_entry(parent, vmfClass, vmfObject)
         
-        # try:
-            # parent[vmfClass].append(vmfObject)
-        # except KeyError:
-            # parent[vmfClass] = vmfObject
-        # except AttributeError:
-            # assert isinstance(parent[vmfClass], dict)
-            # parent[vmfClass] = [parent[vmfClass], vmfObject]
-            
     def remove_object_from_data(self, vmfClass, id):
         ''' Removes an object from its current location in the VMF data.
         
