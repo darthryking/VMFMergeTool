@@ -244,6 +244,62 @@ class UntieSolid(VMFDelta):
         return hash(self.solidId)
         
         
+class AddOutput(VMFDelta):
+    def __init__(self, entityId, output, value, outputId):
+        self.entityId = entityId
+        self.output = output
+        self.value = value
+        self.outputId = outputId
+        super(AddOutput, self).__init__()
+        
+    def __repr__(self):
+        return "AddOutput({}, {}, {}, {})".format(
+                repr(self.entityId),
+                repr(self.output),
+                repr(self.value),
+                repr(self.outputId),
+            )
+            
+    def __eq__(self):
+        return (
+            type(self) is type(other) and
+            self.entityId == other.entityId and
+            self.output == other.output and
+            self.outputId == other.outputId
+        )
+        
+    def __hash__(self):
+        return hash((self.entityId, self.output, self.value, self.outputId))
+        
+        
+class RemoveOutput(VMFDelta):
+    def __init__(self, entityId, output, value, outputId):
+        self.entityId = entityId
+        self.output = output
+        self.value = value
+        self.outputId = outputId
+        super(RemoveOutput, self).__init__()
+        
+    def __repr__(self):
+        return "RemoveOutput({}, {}, {}, {})".format(
+                repr(self.entityId),
+                repr(self.output),
+                repr(self.value),
+                repr(self.outputId),
+            )
+            
+    def __eq__(self, other):
+        return (
+            type(self) is type(other) and
+            self.entityId == other.entityId and
+            self.output == other.output and
+            self.outputId == other.outputId
+        )
+        
+    def __hash__(self):
+        return hash((self.entityId, self.output, self.value, self.outputId))
+        
+        
 def merge_delta_lists(deltaLists, aggressive=False):
     """ Takes multiple lists of deltas, and merges them into a single list of
     deltas that can be used to mutate the parent VMF into a merged VMF with 
@@ -263,6 +319,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
         AddProperty,
         RemoveProperty,
         ChangeProperty,
+        AddOutput,
+        RemoveOutput,
         TieSolid,
         UntieSolid,
     )

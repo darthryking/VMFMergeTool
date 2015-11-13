@@ -2,7 +2,7 @@ versioninfo
 {
 	"editorversion" "400"
 	"editorbuild" "6412"
-	"mapversion" "4"
+	"mapversion" "5"
 	"formatversion" "100"
 	"prefab" "0"
 }
@@ -20,7 +20,7 @@ viewsettings
 world
 {
 	"id" "1"
-	"mapversion" "4"
+	"mapversion" "5"
 	"classname" "worldspawn"
 	"detailmaterial" "detail/detailsprites"
 	"detailvbsp" "detail.vbsp"
@@ -50,12 +50,9 @@ entity
 	{
 		"OnUser1" "!self,Kill,,0,-1"
 		"OnUser1" "!self,Kill,,0,-1"
-		"OnUser1" "!self,Kill,,0,-1"
-		"OnUser1" "!self,Kill,,0,-1"
-		"OnUser1" "!self,Kill,,0,-1"
-		"OnUser1" "!self,Kill,,0,-1"
-		"OnUser1" "!self,Kill,,0,-1"
-		"OnUser1" "!self,Kill,,0,-1"
+		"OnUser2" "!self,Color,42,0,-1"
+		"OnUser2" "!self,Color,42,0,-1"
+		"OnUser2" "!self,Color,42,0,-1"
 	}
 	solid
 	{

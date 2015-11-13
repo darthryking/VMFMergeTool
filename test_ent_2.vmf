@@ -2,7 +2,7 @@ versioninfo
 {
 	"editorversion" "400"
 	"editorbuild" "6412"
-	"mapversion" "4"
+	"mapversion" "5"
 	"formatversion" "100"
 	"prefab" "0"
 }
@@ -20,7 +20,7 @@ viewsettings
 world
 {
 	"id" "1"
-	"mapversion" "4"
+	"mapversion" "5"
 	"classname" "worldspawn"
 	"detailmaterial" "detail/detailsprites"
 	"detailvbsp" "detail.vbsp"
@@ -46,17 +46,6 @@ entity
 	"spawnflags" "2"
 	"StartDisabled" "0"
 	"vrad_brush_cast_shadows" "0"
-	connections
-	{
-		"OnUser1" "!self,Kill,,0,-1"
-		"OnUser1" "!self,Kill,,0,-1"
-		"OnUser1" "!self,Kill,,0,-1"
-		"OnUser1" "!self,Kill,,0,-1"
-		"OnUser1" "!self,Kill,,0,-1"
-		"OnUser1" "!self,Kill,,0,-1"
-		"OnUser1" "!self,Kill,,0,-1"
-		"OnUser1" "!self,Kill,,0,-1"
-	}
 	solid
 	{
 		"id" "2"
