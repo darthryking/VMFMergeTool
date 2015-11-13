@@ -7,6 +7,7 @@ and VMF objects.
 
 """
 
+import copy
 from collections import OrderedDict
 
 from vdfutils import parse_vdf, format_vdf, VDFConsistencyError
@@ -15,6 +16,7 @@ from vmfdelta import (
     AddObject, RemoveObject, ChangeObject, 
     AddProperty, RemoveProperty, ChangeProperty, 
     TieSolid, UntieSolid,
+    AddOutput, RemoveOutput,
 )
 
 
@@ -54,6 +56,13 @@ class VMF(object):
     
     CLASSES = (WORLD, SOLID, SIDE, ENTITY)
     
+    # Used to delimit sub-property paths. We choose a sequence containing 
+    # at least one double quote, because the double quote is the only human-
+    # readable character that I know of that is universally disallowed in all 
+    # VMF fields, which means we run no risk of accidentally clobbering (or 
+    # getting clobbered by) someone's data.
+    PROPERTY_DELIMITER = '"::"'
+    
     @classmethod
     def from_path(cls, path):
         ''' Returns a constructed VMF from the given *.vmf file path.
@@ -83,6 +92,8 @@ class VMF(object):
         
         self.revision = int(vmfData['versioninfo']['mapversion'])
         
+        # The dictionaries map IDs to VMF objects.
+        # 'world' is just the world VMF object.
         self.world = None
         self.solidDict = OrderedDict()
         self.sideDict = OrderedDict()
@@ -297,13 +308,15 @@ class VMF(object):
             
         assert isinstance(parent, dict)
         
-        try:
-            parent[vmfClass].append(vmfObject)
-        except KeyError:
-            parent[vmfClass] = vmfObject
-        except AttributeError:
-            assert isinstance(parent[vmfClass], dict)
-            parent[vmfClass] = [parent[vmfClass], vmfObject]
+        add_object_entry(parent, vmfClass, vmfObject)
+        
+        # try:
+            # parent[vmfClass].append(vmfObject)
+        # except KeyError:
+            # parent[vmfClass] = vmfObject
+        # except AttributeError:
+            # assert isinstance(parent[vmfClass], dict)
+            # parent[vmfClass] = [parent[vmfClass], vmfObject]
             
     def remove_object_from_data(self, vmfClass, id):
         ''' Removes an object from its current location in the VMF data.
@@ -397,14 +410,37 @@ class VMF(object):
                 
             elif (isinstance(delta, AddProperty) or 
                     isinstance(delta, ChangeProperty)):
-                
+                    
                 vmfObject = self.get_object(delta.vmfClass, delta.id)
-                vmfObject[delta.key] = delta.value
+                set_object_property(vmfObject, delta.key, delta.value)
                 
             elif isinstance(delta, RemoveProperty):
                 vmfObject = self.get_object(delta.vmfClass, delta.id)
-                del vmfObject[delta.key]
+                delete_object_property(vmfObject, delta.key)
                 
+            elif isinstance(delta, AddOutput):
+                entity = self.get_object(VMF.ENTITY, delta.entityId)
+                
+                if 'connections' not in entity:
+                    entity['connections'] = OrderedDict()
+                    
+                add_object_entry(
+                        entity['connections'],
+                        delta.output,
+                        delta.value,
+                    )
+                    
+            elif isinstance(delta, RemoveOutput):
+                entity = self.get_object(VMF.ENTITY, delta.entityId)
+                
+                assert 'connections' in entity
+                
+                remove_object_entry(
+                        entity['connections'],
+                        delta.output,
+                        delta.value,
+                    )
+                    
             elif isinstance(delta, TieSolid):
                 self.brushEntityDict[delta.solidId] = delta.entityId
                 
@@ -429,7 +465,10 @@ class VMF(object):
                         (VMF.WORLD, get_id(self.world)),
                     )
                     
-        # TODO: Increment revision number.
+        # Increment revision number.
+        self.revision += 1
+        self.vmfData['versioninfo']['mapversion'] = self.revision
+        self.world['mapversion'] = self.revision
         
         
 def get_id(vmfObject):
@@ -437,22 +476,189 @@ def get_id(vmfObject):
     return int(vmfObject['id'])
     
     
+def add_object_entry(vmfObject, key, value):
+    """ Adds an entry to the given VMF object. """
+    
+    try:
+        vmfObject[key].append(value)
+    except KeyError:
+        vmfObject[key] = value
+    except AttributeError:
+        vmfObject[key] = [vmfObject[key], value]
+        
+        
+def remove_object_entry(vmfObject, key, value):
+    """ Removes a particular object entry from the given VMF object. """
+    
+    objectEntry = vmfObject[key]
+    try:
+        objectEntry.remove(value)
+    except AttributeError:
+        # The entry is a dict, i.e. it's the last entry. Remove it.
+        assert isinstance(objectEntry, dict)
+        del vmfObject[key]
+    else:
+        if len(objectEntry) == 1:
+            # The entry is now a singleton list. Flatten it to simply 
+            # refer to the object itself.
+            vmfObject[key] = objectEntry[0]
+            
+            
+def object_has_property(vmfObject, property):
+    """ Gives whether or not the given VMF object has the given property. """
+    
+    object = vmfObject
+    for key in property.split(VMF.PROPERTY_DELIMITER):
+        assert isinstance(object, dict)
+        
+        if key not in object:
+            return False
+            
+        object = object[key]
+        
+    else:
+        return True
+        
+        
+def get_object_property(vmfObject, property):
+    """ Gets the given property from the given VMF object. """
+    
+    result = vmfObject
+    for key in property.split(VMF.PROPERTY_DELIMITER):
+        if not isinstance(result, dict):
+            raise KeyError(property)
+            
+        try:
+            result = result[key]
+        except KeyError:
+            raise KeyError(property)
+            
+    return result
+    
+    
+def set_object_property(vmfObject, property, value):
+    """ Sets a property of the given VMF object to the given value. """
+    
+    propertyPath = property.split(VMF.PROPERTY_DELIMITER)
+    
+    object = vmfObject
+    for key in propertyPath[:-1]:
+        if not isinstance(object, dict):
+            raise KeyError(property)
+            
+        if key not in object:
+            object[key] = OrderedDict()
+            
+        object = object[key]
+        
+    if not isinstance(object, dict):
+        raise KeyError(property)
+        
+    object[propertyPath[-1]] = value
+    
+    
+def delete_object_property(vmfObject, property):
+    """ Deletes a property of the given VMF object. Only removes nested 
+    pseudo-objects if they end up empty after deletion.
+    
+    """
+    
+    propertyPath = property.split(VMF.PROPERTY_DELIMITER)
+    
+    objectStack = []
+    
+    object = vmfObject
+    for key in propertyPath[:-1]:
+        if not isinstance(object, dict):
+            raise KeyError(property)
+            
+        # Keep a stack of sub-objects so we can walk up the stack later and 
+        # delete empty objects.
+        objectStack.append((key, object))
+        
+        try:
+            object = object[key]
+        except KeyError:
+            raise KeyError(property)
+            
+    if not isinstance(object, dict):
+        raise KeyError(property)
+        
+    del object[propertyPath[-1]]
+    
+    # Remove empty pseudo-objects.
+    while objectStack:
+        key, object = objectStack.pop()
+        
+        if len(object[key]) == 0:
+            del object[key]
+            
+            
 def iter_properties(vmfObject):
-    """ Returns an iterator over all of the given object's properties, in 
-    the form of key/value pairs.
+    """ Returns an iterator over all of the given object's properties and 
+    sub-properties, in the form of key/value pairs.
+    
+    Sub-property paths are delimited by VMF.PROPERTY_DELIMITER.
     
     We do not count the 'id' property as an actual property, since we 
     special-case it all over the place.
     
     """
     
-    return (
-        (key, value)
-        for key, value in vmfObject.iteritems()
-            if key != 'id' and key not in VMF.CLASSES
-    )
+    IGNORED_KEYS = (
+        'id',
+        'mapversion',
+        'connections',
+    ) + VMF.CLASSES
     
+    for key, value in vmfObject.iteritems():
+        if key not in IGNORED_KEYS:
+            if isinstance(value, basestring) or isinstance(value, list):
+                yield (key, value)
+                
+            elif isinstance(value, dict):
+                for subkey, subvalue in iter_properties(value):
+                    yield (
+                        VMF.PROPERTY_DELIMITER.join((key, subkey)),
+                        subvalue,
+                    )
+                    
+            else:
+                assert False
+                
+                
+def iter_outputs(entity):
+    """ Returns an iterator over all of the given entity's outputs, in the 
+    form (outputName, outputValue, outputID).
     
+    """
+    
+    if 'connections' not in entity:
+        return
+        
+    connections = entity['connections']
+    
+    # Keeps track of how many of each output we have seen so far.
+    # Maps (output, value) pairs to an integer count.
+    outputValueCountsDict = {}
+    
+    for output, values in connections.iteritems():
+        if isinstance(values, basestring):
+            values = [values]
+            
+        assert isinstance(values, list)
+        
+        for value in values:
+            count = outputValueCountsDict.get((output, value), 0)
+            
+            yield (output, value, count)
+            
+            try:
+                outputValueCountsDict[(output, value)] += 1
+            except KeyError:
+                outputValueCountsDict[(output, value)] = 1
+                
+                
 def compare_vmfs(parent, child):
     """ Compares the given two VMFs, and returns a list of VMFDeltas 
     representing the changes required to mutate the parent into the child.
@@ -506,6 +712,13 @@ def compare_vmfs(parent, child):
                 newDelta = AddProperty(vmfClass, newId, key, value)
                 deltas.append(newDelta)
                 
+            # Add each of the object's outputs as an AddOutput delta, if the 
+            # object is an entity.
+            if vmfClass == VMF.ENTITY:
+                for output, value, outputId in iter_outputs(childObject):
+                    newDelta = AddOutput(id, output, value, outputId)
+                    deltas.append(newDelta)
+                    
     # Check for changed/deleted objects.
     for vmfClass, parentObject in parent.iter_objects():
         id = get_id(parentObject)
@@ -536,15 +749,20 @@ def compare_vmfs(parent, child):
                 
         # Check for new properties.
         for key, value in iter_properties(childObject):
-            if key not in parentObject:
+            if not object_has_property(parentObject, key):
                 add_object_changed_delta()
-                newDelta = AddProperty(vmfClass, id, key, value)
+                newDelta = AddProperty(
+                        vmfClass,
+                        id,
+                        key,
+                        copy.deepcopy(value)
+                    )
                 deltas.append(newDelta)
                 
         # Check for changed/deleted properties.
         for key, value in iter_properties(parentObject):
             try:
-                childPropertyValue = childObject[key]
+                childPropertyValue = get_object_property(childObject, key)
                 
             except KeyError:
                 # Property was deleted.
@@ -560,10 +778,33 @@ def compare_vmfs(parent, child):
                         vmfClass,
                         id,
                         key,
-                        childPropertyValue,
+                        copy.deepcopy(childPropertyValue),
                     )
                 deltas.append(newDelta)
                 
+        # Deal with entity I/O if the object is an entity.
+        if vmfClass == VMF.ENTITY:
+            parentOutputSet = frozenset(iter_outputs(parentObject))
+            childOutputSet = frozenset(iter_outputs(childObject))
+            
+            # Check for new entity outputs.
+            for childOutputInfo in childOutputSet:
+                if childOutputInfo not in parentOutputSet:
+                    add_object_changed_delta()
+                    
+                    output, value, outputId = childOutputInfo
+                    newDelta = AddOutput(id, output, value, outputId)
+                    deltas.append(newDelta)
+                    
+            # Check for deleted entity outputs.
+            for parentOutputInfo in parentOutputSet:
+                if parentOutputInfo not in childOutputSet:
+                    add_object_changed_delta()
+                    
+                    output, value, outputId = parentOutputInfo
+                    newDelta = RemoveOutput(id, output, value, outputId)
+                    deltas.append(newDelta)
+                    
     # Check for newly-tied solids.
     for solidId, entityId in child.brushEntityDict.iteritems():
         if solidId not in parent.brushEntityDict:
