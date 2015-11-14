@@ -310,14 +310,6 @@ class VMF(object):
         
         add_object_entry(parent, vmfClass, vmfObject)
         
-        # try:
-            # parent[vmfClass].append(vmfObject)
-        # except KeyError:
-            # parent[vmfClass] = vmfObject
-        # except AttributeError:
-            # assert isinstance(parent[vmfClass], dict)
-            # parent[vmfClass] = [parent[vmfClass], vmfObject]
-            
     def remove_object_from_data(self, vmfClass, id):
         ''' Removes an object from its current location in the VMF data.
         
@@ -410,14 +402,37 @@ class VMF(object):
                 
             elif (isinstance(delta, AddProperty) or 
                     isinstance(delta, ChangeProperty)):
-                
+                    
                 vmfObject = self.get_object(delta.vmfClass, delta.id)
-                vmfObject[delta.key] = delta.value
+                set_object_property(vmfObject, delta.key, delta.value)
                 
             elif isinstance(delta, RemoveProperty):
                 vmfObject = self.get_object(delta.vmfClass, delta.id)
-                del vmfObject[delta.key]
+                delete_object_property(vmfObject, delta.key)
                 
+            elif isinstance(delta, AddOutput):
+                entity = self.get_object(VMF.ENTITY, delta.entityId)
+                
+                if 'connections' not in entity:
+                    entity['connections'] = OrderedDict()
+                    
+                add_object_entry(
+                        entity['connections'],
+                        delta.output,
+                        delta.value,
+                    )
+                    
+            elif isinstance(delta, RemoveOutput):
+                entity = self.get_object(VMF.ENTITY, delta.entityId)
+                
+                assert 'connections' in entity
+                
+                remove_object_entry(
+                        entity['connections'],
+                        delta.output,
+                        delta.value,
+                    )
+                    
             elif isinstance(delta, TieSolid):
                 self.brushEntityDict[delta.solidId] = delta.entityId
                 
@@ -513,6 +528,64 @@ def get_object_property(vmfObject, property):
     return result
     
     
+def set_object_property(vmfObject, property, value):
+    """ Sets a property of the given VMF object to the given value. """
+    
+    propertyPath = property.split(VMF.PROPERTY_DELIMITER)
+    
+    object = vmfObject
+    for key in propertyPath[:-1]:
+        if not isinstance(object, dict):
+            raise KeyError(property)
+            
+        if key not in object:
+            object[key] = OrderedDict()
+            
+        object = object[key]
+        
+    if not isinstance(object, dict):
+        raise KeyError(property)
+        
+    object[propertyPath[-1]] = value
+    
+    
+def delete_object_property(vmfObject, property):
+    """ Deletes a property of the given VMF object. Only removes nested 
+    pseudo-objects if they end up empty after deletion.
+    
+    """
+    
+    propertyPath = property.split(VMF.PROPERTY_DELIMITER)
+    
+    objectStack = []
+    
+    object = vmfObject
+    for key in propertyPath[:-1]:
+        if not isinstance(object, dict):
+            raise KeyError(property)
+            
+        # Keep a stack of sub-objects so we can walk up the stack later and 
+        # delete empty objects.
+        objectStack.append((key, object))
+        
+        try:
+            object = object[key]
+        except KeyError:
+            raise KeyError(property)
+            
+    if not isinstance(object, dict):
+        raise KeyError(property)
+        
+    del object[propertyPath[-1]]
+    
+    # Remove empty pseudo-objects.
+    while objectStack:
+        key, object = objectStack.pop()
+        
+        if len(object[key]) == 0:
+            del object[key]
+            
+            
 def iter_properties(vmfObject):
     """ Returns an iterator over all of the given object's properties and 
     sub-properties, in the form of key/value pairs.
