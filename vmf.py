@@ -711,6 +711,9 @@ def compare_vmfs(parent, child):
                     newDelta = AddOutput(id, output, value, outputId)
                     deltas.append(newDelta)
                     
+    # Set to keep track of all the ObjectChanged deltas we've added.
+    NonLocal.objectChangedDeltaSet = set()
+    
     # Check for changed/deleted objects.
     for vmfClass, parentObject in parent.iter_objects():
         id = get_id(parentObject)
@@ -724,25 +727,33 @@ def compare_vmfs(parent, child):
             deltas.append(newDelta)
             continue    # Doing this saves an extra indentation level.
             
-        # Be prepared to add the ObjectChanged delta for this particular 
-        # VMF object.
-        NonLocal.addedObjectChangedDelta = False
+        NonLocal.vmfClass = vmfClass
+        NonLocal.id = id
         
-        def add_object_changed_delta():
-            ''' Add the ObjectChanged VMFDelta to the delta list, if we 
-            haven't already done so.
+        def add_object_changed_deltas():
+            ''' Add the ObjectChanged VMFDelta to the delta list for the 
+            current object and all of its parents, if we haven't already done 
+            so.
             
             '''
             
-            if not NonLocal.addedObjectChangedDelta:
+            objectInfo = (NonLocal.vmfClass, NonLocal.id)
+            
+            while objectInfo is not None:
+                vmfClass, id = objectInfo
+                
                 newDelta = ChangeObject(vmfClass, id)
-                deltas.append(newDelta)
-                NonLocal.addedObjectChangedDelta = True
+                
+                if newDelta not in NonLocal.objectChangedDeltaSet:
+                    NonLocal.objectChangedDeltaSet.add(newDelta)
+                    deltas.append(newDelta)
+                    
+                objectInfo = parent.get_object_parent_info(vmfClass, id)
                 
         # Check for new properties.
         for key, value in iter_properties(childObject):
             if not object_has_property(parentObject, key):
-                add_object_changed_delta()
+                add_object_changed_deltas()
                 newDelta = AddProperty(
                         vmfClass,
                         id,
@@ -758,14 +769,14 @@ def compare_vmfs(parent, child):
                 
             except KeyError:
                 # Property was deleted.
-                add_object_changed_delta()
+                add_object_changed_deltas()
                 newDelta = RemoveProperty(vmfClass, id, key)
                 deltas.append(newDelta)
                 continue
                 
             if childPropertyValue != value:
                 # Property was changed.
-                add_object_changed_delta()
+                add_object_changed_deltas()
                 newDelta = ChangeProperty(
                         vmfClass,
                         id,
@@ -782,7 +793,7 @@ def compare_vmfs(parent, child):
             # Check for new entity outputs.
             for childOutputInfo in childOutputSet:
                 if childOutputInfo not in parentOutputSet:
-                    add_object_changed_delta()
+                    add_object_changed_deltas()
                     
                     output, value, outputId = childOutputInfo
                     newDelta = AddOutput(id, output, value, outputId)
@@ -791,7 +802,7 @@ def compare_vmfs(parent, child):
             # Check for deleted entity outputs.
             for parentOutputInfo in parentOutputSet:
                 if parentOutputInfo not in childOutputSet:
-                    add_object_changed_delta()
+                    add_object_changed_deltas()
                     
                     output, value, outputId = parentOutputInfo
                     newDelta = RemoveOutput(id, output, value, outputId)
