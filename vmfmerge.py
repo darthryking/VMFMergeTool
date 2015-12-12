@@ -3,13 +3,13 @@
 vmfmerge.py
 By DKY
 
-Version 0.0.0b DEV
+Version 0.0.0c DEV
 
 VMF Merge Tool
 
 """
 
-__version__ = '0.0.0b DEV'
+__version__ = '0.0.0c DEV'
 
 import sys
 from datetime import datetime
