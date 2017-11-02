@@ -12,9 +12,7 @@ class DeltaMergeConflict(Exception):
     
     def __init__(self, partialDeltas=None):
         self.partialDeltas = partialDeltas
-        
-    def __str__(self):
-        return (
+        super(DeltaMergeConflict, self).__init__(
             "WARNING: Merge conflict(s) detected. "
             "Human intervention will be required for conflict resolution."
         )
@@ -30,6 +28,16 @@ class VMFDelta(object):
         # The file from which this delta originated.
         self.originFile = originFile
         
+    def _equiv_attrs(self):
+        ''' Gives a tuple of attributes that matter for the purposes of 
+        "equivalence" between deltas of this type.
+        
+        (See .__eq__() for an explanation of what this means.)
+        
+        '''
+        
+        raise NotImplementedError
+        
     def __eq__(self, other):
         ''' Two deltas are equivalent when they represent the same conceptual 
         kind of change as another, without regard to the details of such a 
@@ -41,7 +49,10 @@ class VMFDelta(object):
         
         '''
         
-        raise NotImplementedError
+        return (
+            type(self) is type(other)
+            and self._equiv_attrs() == other._equiv_attrs()
+        )
         
     def __hash__(self):
         ''' Used to ensure that equivalent deltas are correctly hashed in 
@@ -49,7 +60,7 @@ class VMFDelta(object):
         
         '''
         
-        raise NotImplementedError
+        return hash(self._equiv_attrs())
         
         
 class AddObject(VMFDelta):
@@ -61,11 +72,11 @@ class AddObject(VMFDelta):
         
     def __repr__(self):
         return "AddObject({}, {}, {})".format(
-                repr(self.parent),
-                repr(self.vmfClass),
-                repr(self.id),
-            )
-            
+            repr(self.parent),
+            repr(self.vmfClass),
+            repr(self.id),
+        )
+        
     def __eq__(self, other):
         # AddObject deltas are always completely unique.
         return False
@@ -82,19 +93,12 @@ class RemoveObject(VMFDelta):
         
     def __repr__(self):
         return "RemoveObject({}, {})".format(
-                repr(self.vmfClass),
-                repr(self.id),
-            )
-            
-    def __eq__(self, other):
-        return (
-            type(self) is type(other) and 
-            self.vmfClass == other.vmfClass and 
-            self.id == other.id
+            repr(self.vmfClass),
+            repr(self.id),
         )
         
-    def __hash__(self):
-        return hash((self.vmfClass, self.id))
+    def _equiv_attrs(self):
+        return (self.vmfClass, self.id)
         
         
 class ChangeObject(VMFDelta):
@@ -105,19 +109,12 @@ class ChangeObject(VMFDelta):
         
     def __repr__(self):
         return "ChangeObject({}, {})".format(
-                repr(self.vmfClass),
-                repr(self.id),
-            )
-            
-    def __eq__(self, other):
-        return (
-            type(self) is type(other) and 
-            self.vmfClass == other.vmfClass and 
-            self.id == other.id
+            repr(self.vmfClass),
+            repr(self.id),
         )
         
-    def __hash__(self):
-        return hash((self.vmfClass, self.id))
+    def _equiv_attrs(self):
+        return (self.vmfClass, self.id)
         
         
 class AddProperty(VMFDelta):
@@ -130,22 +127,14 @@ class AddProperty(VMFDelta):
         
     def __repr__(self):
         return "AddProperty({}, {}, {}, {})".format(
-                repr(self.vmfClass),
-                repr(self.id),
-                repr(self.key),
-                repr(self.value),
-            )
-            
-    def __eq__(self, other):
-        return (
-            type(self) is type(other) and 
-            self.vmfClass == other.vmfClass and
-            self.id == other.id and
-            self.key == other.key
+            repr(self.vmfClass),
+            repr(self.id),
+            repr(self.key),
+            repr(self.value),
         )
         
-    def __hash__(self):
-        return hash((self.vmfClass, self.id, self.key))
+    def _equiv_attrs(self):
+        return (self.vmfClass, self.id, self.key)
         
         
 class RemoveProperty(VMFDelta):
@@ -157,21 +146,13 @@ class RemoveProperty(VMFDelta):
         
     def __repr__(self):
         return "RemoveProperty({}, {}, {})".format(
-                repr(self.vmfClass),
-                repr(self.id),
-                repr(self.key),
-            )
-            
-    def __eq__(self, other):
-        return (
-            type(self) is type(other) and 
-            self.vmfClass == other.vmfClass and
-            self.id == other.id and
-            self.key == other.key
+            repr(self.vmfClass),
+            repr(self.id),
+            repr(self.key),
         )
         
-    def __hash__(self):
-        return hash((self.vmfClass, self.id, self.key))
+    def _equiv_attrs(self):
+        return (self.vmfClass, self.id, self.key)
         
         
 class ChangeProperty(VMFDelta):
@@ -184,22 +165,14 @@ class ChangeProperty(VMFDelta):
         
     def __repr__(self):
         return "ChangeProperty({}, {}, {}, {})".format(
-                repr(self.vmfClass),
-                repr(self.id),
-                repr(self.key),
-                repr(self.value),
-            )
-            
-    def __eq__(self, other):
-        return (
-            type(self) is type(other) and 
-            self.vmfClass == other.vmfClass and
-            self.id == other.id and
-            self.key == other.key
+            repr(self.vmfClass),
+            repr(self.id),
+            repr(self.key),
+            repr(self.value),
         )
         
-    def __hash__(self):
-        return hash((self.vmfClass, self.id, self.key))
+    def _equiv_attrs(self):
+        return (self.vmfClass, self.id, self.key)
         
         
 class TieSolid(VMFDelta):
@@ -210,18 +183,12 @@ class TieSolid(VMFDelta):
         
     def __repr__(self):
         return "TieSolid({}, {})".format(
-                repr(self.solidId),
-                repr(self.entityId),
-            )
-            
-    def __eq__(self, other):
-        return (
-            type(self) is type(other) and 
-            self.solidId == other.solidId
+            repr(self.solidId),
+            repr(self.entityId),
         )
         
-    def __hash__(self):
-        return hash(self.solidId)
+    def _equiv_attrs(self):
+        return (self.solidId,)
         
         
 class UntieSolid(VMFDelta):
@@ -231,17 +198,11 @@ class UntieSolid(VMFDelta):
         
     def __repr__(self):
         return "UntieSolid({})".format(
-                repr(self.solidId)
-            )
-            
-    def __eq__(self, other):
-        return (
-            type(self) is type(other) and 
-            self.solidId == other.solidId
+            repr(self.solidId)
         )
         
-    def __hash__(self):
-        return hash(self.solidId)
+    def _equiv_attrs(self):
+        return (self.solidId,)
         
         
 class AddOutput(VMFDelta):
@@ -254,22 +215,14 @@ class AddOutput(VMFDelta):
         
     def __repr__(self):
         return "AddOutput({}, {}, {}, {})".format(
-                repr(self.entityId),
-                repr(self.output),
-                repr(self.value),
-                repr(self.outputId),
-            )
-            
-    def __eq__(self, other):
-        return (
-            type(self) is type(other) and
-            self.entityId == other.entityId and
-            self.output == other.output and
-            self.outputId == other.outputId
+            repr(self.entityId),
+            repr(self.output),
+            repr(self.value),
+            repr(self.outputId),
         )
         
-    def __hash__(self):
-        return hash((self.entityId, self.output, self.value, self.outputId))
+    def _equiv_attrs(self):
+        return (self.entityId, self.output, self.outputId)
         
         
 class RemoveOutput(VMFDelta):
@@ -282,22 +235,14 @@ class RemoveOutput(VMFDelta):
         
     def __repr__(self):
         return "RemoveOutput({}, {}, {}, {})".format(
-                repr(self.entityId),
-                repr(self.output),
-                repr(self.value),
-                repr(self.outputId),
-            )
-            
-    def __eq__(self, other):
-        return (
-            type(self) is type(other) and
-            self.entityId == other.entityId and
-            self.output == other.output and
-            self.outputId == other.outputId
+            repr(self.entityId),
+            repr(self.output),
+            repr(self.value),
+            repr(self.outputId),
         )
         
-    def __hash__(self):
-        return hash((self.entityId, self.output, self.value, self.outputId))
+    def _equiv_attrs(self):
+        return (self.entityId, self.output, self.outputId)
         
         
 def merge_delta_lists(deltaLists, aggressive=False):
@@ -380,10 +325,10 @@ def merge_delta_lists(deltaLists, aggressive=False):
         elif isinstance(delta, ChangeProperty):
             # Check for conflicts with RemoveProperty deltas.
             removePropertyDelta = RemoveProperty(
-                    delta.vmfClass,
-                    delta.id,
-                    delta.key,
-                )
+                delta.vmfClass,
+                delta.id,
+                delta.key,
+            )
             if removePropertyDelta in mergedDeltasDict:
                 # Conflict!
                 print (
@@ -447,18 +392,18 @@ def merge_delta_lists(deltaLists, aggressive=False):
     ##################
     
     # Maps delta types to lists containing all deltas of that type.
-    deltaTypeListsDict = OrderedDict(
-            (DeltaType, [])
-            for DeltaType in deltaTypes
-        )
-        
-    # Build the deltaTypeListsDict.
+    deltasForDeltaType = OrderedDict(
+        (DeltaType, [])
+        for DeltaType in deltaTypes
+    )
+    
+    # Build the deltasForDeltaType dict.
     for deltas in deltaLists:
         for delta in deltas:
-            deltaTypeListsDict[type(delta)].append(delta)
+            deltasForDeltaType[type(delta)].append(delta)
             
     conflicted = False
-    for deltaType, deltas in deltaTypeListsDict.iteritems():
+    for deltas in deltasForDeltaType.itervalues():
         for delta in deltas:
             try:
                 merge(delta)

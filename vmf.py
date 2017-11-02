@@ -25,10 +25,7 @@ class InvalidVMF(Exception):
     
     def __init__(self, path, message):
         self.path = path if path else '(No Path)'
-        self.message = message
-        
-    def __str__(self):
-        return "Invalid VMF file: {}\n{}".format(self.path, self.message)
+        super(InvalidVMF, self).__init__(message)
         
         
 class VMF(object):
@@ -41,12 +38,13 @@ class VMF(object):
             self.vmfClass = vmfClass
             self.objectId = id
             
-        def __str__(self):
-            return "Object with class '{}' and id {} does not exist!".format(
-                    self.vmfClass,
-                    self.objectId,
+            super(ObjectDoesNotExist, self).__init__(
+                "Object with class '{}' and id {} does not exist!".format(
+                    vmfClass,
+                    id,
                 )
-                
+            )
+            
     EXTENSION = '.vmf'
     
     WORLD = 'world'
@@ -88,20 +86,20 @@ class VMF(object):
         self.vmfData = vmfData
         self.path = path
         
-        self.lastIdDict = {}
+        self.lastIdForVmfClass = {}
         
         self.revision = int(vmfData['versioninfo']['mapversion'])
         
         # The dictionaries map IDs to VMF objects.
         # 'world' is just the world VMF object.
         self.world = None
-        self.solidDict = OrderedDict()
-        self.sideDict = OrderedDict()
-        self.entityDict = OrderedDict()
+        self.solidsById = OrderedDict()
+        self.sidesById = OrderedDict()
+        self.entitiesById = OrderedDict()
         
         # Relates Solid IDs to Entity IDs, for the purpose of keeping track of 
         # brush-based entities.
-        self.brushEntityDict = OrderedDict()
+        self.entityIdForSolidId = OrderedDict()
         
         # We keep a reference between all objects' identifying information and 
         # their parents' identifying information (if they have one), so that 
@@ -117,16 +115,16 @@ class VMF(object):
         def update_last_id(vmfClass, id):
             if vmfClass in VMF.CLASSES:
                 try:
-                    lastId = self.lastIdDict[vmfClass]
+                    lastId = self.lastIdForVmfClass[vmfClass]
                 except KeyError:
-                    self.lastIdDict[vmfClass] = id
+                    self.lastIdForVmfClass[vmfClass] = id
                 else:
                     if id > lastId:
-                        self.lastIdDict[vmfClass] = id
+                        self.lastIdForVmfClass[vmfClass] = id
                         
         def add_solids_from_object(vmfClass, vmfObject):
-            if (VMF.SOLID not in vmfObject or
-                    isinstance(vmfObject[VMF.SOLID], basestring)):
+            if (VMF.SOLID not in vmfObject
+                    or isinstance(vmfObject[VMF.SOLID], basestring)):
                 return
                 
             solids = vmfObject[VMF.SOLID]
@@ -137,10 +135,10 @@ class VMF(object):
             
             for solid in solids:
                 solidId = get_id(solid)
-                self.solidDict[solidId] = solid
+                self.solidsById[solidId] = solid
                 
                 if vmfClass == VMF.ENTITY:
-                    self.brushEntityDict[solidId] = get_id(vmfObject)
+                    self.entityIdForSolidId[solidId] = get_id(vmfObject)
                     
                 self.parentDict[(VMF.SOLID, solidId)] = (
                     vmfClass,
@@ -154,7 +152,7 @@ class VMF(object):
                 
                 for side in solid[VMF.SIDE]:
                     sideId = get_id(side)
-                    self.sideDict[sideId] = side
+                    self.sidesById[sideId] = side
                     
                     self.parentDict[(VMF.SIDE, sideId)] = (VMF.SOLID, solidId)
                     
@@ -177,7 +175,7 @@ class VMF(object):
                 
                 for entity in value:
                     id = get_id(entity)
-                    self.entityDict[id] = entity
+                    self.entitiesById[id] = entity
                     
                     update_last_id(VMF.ENTITY, id)
                     
@@ -196,19 +194,19 @@ class VMF(object):
             
     def get_solid(self, id):
         try:
-            return self.solidDict[id]
+            return self.solidsById[id]
         except KeyError:
             raise VMF.ObjectDoesNotExist(VMF.SOLID, id)
             
     def get_side(self, id):
         try:
-            return self.sideDict[id]
+            return self.sidesById[id]
         except KeyError:
             raise VMF.ObjectDoesNotExist(VMF.SIDE, id)
             
     def get_entity(self, id):
         try:
-            return self.entityDict[id]
+            return self.entitiesById[id]
         except KeyError:
             raise VMF.ObjectDoesNotExist(VMF.ENTITY, id)
             
@@ -223,19 +221,19 @@ class VMF(object):
     def has_object(self, vmfClass, id):
         return id in {
             VMF.WORLD   :   {get_id(self.world) : self.world},
-            VMF.SOLID   :   self.solidDict,
-            VMF.SIDE    :   self.sideDict,
-            VMF.ENTITY  :   self.entityDict,
+            VMF.SOLID   :   self.solidsById,
+            VMF.SIDE    :   self.sidesById,
+            VMF.ENTITY  :   self.entitiesById,
         }[vmfClass]
         
     def iter_solids(self):
-        return self.solidDict.itervalues()
+        return self.solidsById.itervalues()
         
     def iter_sides(self):
-        return self.sideDict.itervalues()
+        return self.sidesById.itervalues()
         
     def iter_entities(self):
-        return self.entityDict.itervalues()
+        return self.entitiesById.itervalues()
         
     def iter_objects(self):
         ''' Returns an iterator over all the relevant VMF objects in the VMF.
@@ -262,11 +260,11 @@ class VMF(object):
         
     def next_available_id(self, vmfClass):
         try:
-            self.lastIdDict[vmfClass] += 1
+            self.lastIdForVmfClass[vmfClass] += 1
         except KeyError:
-            self.lastIdDict[vmfClass] = 1
+            self.lastIdForVmfClass[vmfClass] = 1
             
-        return self.lastIdDict[vmfClass]
+        return self.lastIdForVmfClass[vmfClass]
         
     def get_object_parent_info(self, vmfClass, id):
         ''' Returns the identifying information for the parent of the given 
@@ -289,7 +287,7 @@ class VMF(object):
         necessary to do so.
         
         This method requires that the given target object exist as an entry in 
-        one of the self.sideDict, self.solidDict, etc. VMF object dictionaries 
+        one of the self.sidesById, self.solidsById, etc. VMF object dictionaries 
         before invocation.
         
         '''
@@ -314,7 +312,7 @@ class VMF(object):
         ''' Removes an object from its current location in the VMF data.
         
         This does NOT remove the object from the master dictionaries of VMF 
-        objects, e.g. self.solidDict, self.sideDict, etc.
+        objects, e.g. self.solidsById, self.sidesById, etc.
         
         '''
         
@@ -366,24 +364,24 @@ class VMF(object):
                 
                 # Add the new object to the appropriate object dictionary.
                 {
-                    VMF.SOLID   :   self.solidDict,
-                    VMF.SIDE    :   self.sideDict,
-                    VMF.ENTITY  :   self.entityDict,
+                    VMF.SOLID   :   self.solidsById,
+                    VMF.SIDE    :   self.sidesById,
+                    VMF.ENTITY  :   self.entitiesById,
                 }[delta.vmfClass][delta.id] = newObject
                 
                 # Add the object to the VMF data under its designated parent.
                 self.add_object_to_data(
-                        delta.vmfClass,
-                        delta.id,
-                        delta.parent,
-                    )
-                    
+                    delta.vmfClass,
+                    delta.id,
+                    delta.parent,
+                )
+                
             elif isinstance(delta, RemoveObject):
                 parentInfo = self.get_object_parent_info(
-                        delta.vmfClass,
-                        delta.id,
-                    )
-                    
+                    delta.vmfClass,
+                    delta.id,
+                )
+                
                 # Only remove the object if its parent hasn't already been 
                 # removed.
                 # Note: If parentInfo is None, this still works.
@@ -392,16 +390,16 @@ class VMF(object):
                     
                 # Remove the object from the appropriate object dictionary.
                 del {
-                    VMF.SOLID   :   self.solidDict,
-                    VMF.SIDE    :   self.sideDict,
-                    VMF.ENTITY  :   self.entityDict,
+                    VMF.SOLID   :   self.solidsById,
+                    VMF.SIDE    :   self.sidesById,
+                    VMF.ENTITY  :   self.entitiesById,
                 }[delta.vmfClass][delta.id]
                 
                 # Keep track of everything that we have removed so far.
                 removedObjectsInfoSet.add((delta.vmfClass, delta.id))
                 
-            elif (isinstance(delta, AddProperty) or 
-                    isinstance(delta, ChangeProperty)):
+            elif (isinstance(delta, AddProperty)
+                    or isinstance(delta, ChangeProperty)):
                     
                 vmfObject = self.get_object(delta.vmfClass, delta.id)
                 set_object_property(vmfObject, delta.key, delta.value)
@@ -417,46 +415,46 @@ class VMF(object):
                     entity['connections'] = OrderedDict()
                     
                 add_object_entry(
-                        entity['connections'],
-                        delta.output,
-                        delta.value,
-                    )
-                    
+                    entity['connections'],
+                    delta.output,
+                    delta.value,
+                )
+                
             elif isinstance(delta, RemoveOutput):
                 entity = self.get_object(VMF.ENTITY, delta.entityId)
                 
                 assert 'connections' in entity
                 
                 remove_object_entry(
-                        entity['connections'],
-                        delta.output,
-                        delta.value,
-                    )
-                    
+                    entity['connections'],
+                    delta.output,
+                    delta.value,
+                )
+                
             elif isinstance(delta, TieSolid):
-                self.brushEntityDict[delta.solidId] = delta.entityId
+                self.entityIdForSolidId[delta.solidId] = delta.entityId
                 
                 self.remove_object_from_data(VMF.SOLID, delta.solidId)
                 
                 # Add the solid to the specified entity.
                 self.add_object_to_data(
-                        VMF.SOLID,
-                        delta.solidId,
-                        (VMF.ENTITY, delta.entityId),
-                    )
-                    
+                    VMF.SOLID,
+                    delta.solidId,
+                    (VMF.ENTITY, delta.entityId),
+                )
+                
             elif isinstance(delta, UntieSolid):
-                del self.brushEntityDict[delta.solidId]
+                del self.entityIdForSolidId[delta.solidId]
                 
                 self.remove_object_from_data(VMF.SOLID, delta.solidId)
                 
                 # Add the solid to the world.
                 self.add_object_to_data(
-                        VMF.SOLID,
-                        delta.solidId,
-                        (VMF.WORLD, get_id(self.world)),
-                    )
-                    
+                    VMF.SOLID,
+                    delta.solidId,
+                    (VMF.WORLD, get_id(self.world)),
+                )
+                
         # Increment revision number.
         self.revision += 1
         self.vmfData['versioninfo']['mapversion'] = self.revision
@@ -488,8 +486,8 @@ def remove_object_entry(vmfObject, key, value):
     except AttributeError:
         # The entry is the last entry. Remove it.
         assert (
-            isinstance(objectEntry, dict) or
-            isinstance(objectEntry, basestring)
+            isinstance(objectEntry, dict)
+            or isinstance(objectEntry, basestring)
         )
         del vmfObject[key]
     else:
@@ -758,11 +756,11 @@ def compare_vmfs(parent, child):
             if not object_has_property(parentObject, key):
                 add_object_changed_deltas()
                 newDelta = AddProperty(
-                        vmfClass,
-                        id,
-                        key,
-                        copy.deepcopy(value)
-                    )
+                    vmfClass,
+                    id,
+                    key,
+                    copy.deepcopy(value),
+                )
                 deltas.append(newDelta)
                 
         # Check for changed/deleted properties.
@@ -781,11 +779,11 @@ def compare_vmfs(parent, child):
                 # Property was changed.
                 add_object_changed_deltas()
                 newDelta = ChangeProperty(
-                        vmfClass,
-                        id,
-                        key,
-                        copy.deepcopy(childPropertyValue),
-                    )
+                    vmfClass,
+                    id,
+                    key,
+                    copy.deepcopy(childPropertyValue),
+                )
                 deltas.append(newDelta)
                 
         # Deal with entity I/O if the object is an entity.
@@ -812,8 +810,8 @@ def compare_vmfs(parent, child):
                     deltas.append(newDelta)
                     
     # Check for newly-tied solids.
-    for solidId, entityId in child.brushEntityDict.iteritems():
-        if solidId not in parent.brushEntityDict:
+    for solidId, entityId in child.entityIdForSolidId.iteritems():
+        if solidId not in parent.entityIdForSolidId:
             # Only tie the solid if we don't already have an AddObject delta
             # that adds it as the child of an Entity object.
             if (VMF.SOLID, solidId) not in newObjectIdDict:
@@ -824,8 +822,8 @@ def compare_vmfs(parent, child):
                 deltas.append(newDelta)
                 
     # Check for untied solids.
-    for solidId, entityId in parent.brushEntityDict.iteritems():
-        if solidId not in child.brushEntityDict:
+    for solidId, entityId in parent.entityIdForSolidId.iteritems():
+        if solidId not in child.entityIdForSolidId:
             newDelta = UntieSolid(solidId)
             deltas.append(newDelta)
             
@@ -866,11 +864,11 @@ def load_vmfs(vmfPaths, output=True):
     for i, path in enumerate(vmfPaths):
         if output:
             print "\t* ({}/{}) Loading {}...".format(
-                    i + 1,
-                    len(vmfPaths),
-                    path,
-                )
-                
+                i + 1,
+                len(vmfPaths),
+                path,
+            )
+            
         vmfs.append(VMF.from_path(path))
         
     return vmfs
