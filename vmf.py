@@ -486,8 +486,11 @@ def remove_object_entry(vmfObject, key, value):
     try:
         objectEntry.remove(value)
     except AttributeError:
-        # The entry is a dict, i.e. it's the last entry. Remove it.
-        assert isinstance(objectEntry, dict)
+        # The entry is the last entry. Remove it.
+        assert (
+            isinstance(objectEntry, dict) or
+            isinstance(objectEntry, basestring)
+        )
         del vmfObject[key]
     else:
         if len(objectEntry) == 1:
@@ -708,7 +711,7 @@ def compare_vmfs(parent, child):
             # object is an entity.
             if vmfClass == VMF.ENTITY:
                 for output, value, outputId in iter_outputs(childObject):
-                    newDelta = AddOutput(id, output, value, outputId)
+                    newDelta = AddOutput(newId, output, value, outputId)
                     deltas.append(newDelta)
                     
     # Set to keep track of all the ObjectChanged deltas we've added.
