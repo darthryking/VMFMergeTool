@@ -245,6 +245,128 @@ class RemoveOutput(VMFDelta):
         return (self.entityId, self.output, self.outputId)
         
         
+# class AddVisGroup(VMFDelta):
+    # def __init__(self, parentId, id, name, color):
+        # self.parentId = parentId
+        # self.id = id
+        # self.name = name
+        # self.color = color
+        # super(AddVisGroup, self).__init__()
+        
+    # def __repr__(self):
+        # return "AddVisGroup({}, {}, {}, {})".format(
+            # repr(self.parentId),
+            # repr(self.id),
+            # repr(self.name),
+            # repr(self.color),
+        # )
+        
+    # def __eq__(self, other):
+        # # AddVisGroup deltas are always completely unique.
+        # return False
+        
+    # def __hash__(self):
+        # return hash((self.parentId, self.id, self.name, self.color))
+        
+        
+# class RemoveVisGroup(VMFDelta):
+    # def __init__(self, id):
+        # self.id = id
+        # super(RemoveVisGroup, self).__init__()
+        
+    # def __repr__(self):
+        # return "RemoveVisGroup({})".format(
+            # repr(self.id),
+        # )
+        
+    # def _equiv_attrs(self):
+        # return (self.id,)
+        
+        
+class MoveVisGroup(VMFDelta):
+    def __init__(self, id, parentId):
+        self.id = id
+        self.parentId = parentId
+        super(MoveVisGroup, self).__init__()
+        
+    def __repr__(self):
+        return "MoveVisGroup({}, {})".format(
+            repr(self.id),
+            repr(self.parentId),
+        )
+        
+    def _equiv_attrs(self):
+        return (self.id,)
+        
+        
+class AddToVisGroup(VMFDelta):
+    def __init__(self, vmfClass, id, visGroupId):
+        self.vmfClass = vmfClass
+        self.id = id
+        self.visGroupId = visGroupId
+        super(AddToVisGroup, self).__init__()
+        
+    def __repr__(self):
+        return "AddToVisGroup({}, {}, {})".format(
+            repr(self.vmfClass),
+            repr(self.id),
+            repr(self.visGroupId),
+        )
+        
+    def _equiv_attrs(self):
+        return (self.vmfClass, self.id, self.visGroupId)
+        
+        
+class RemoveFromVisGroup(VMFDelta):
+    def __init__(self, vmfClass, id, visGroupId):
+        self.vmfClass = vmfClass
+        self.id = id
+        self.visGroupId = visGroupId
+        super(RemoveFromVisGroup, self).__init__()
+        
+    def __repr__(self):
+        return "RemoveFromVisGroup({}, {}, {})".format(
+            repr(self.vmfClass),
+            repr(self.id),
+            repr(self.visGroupId),
+        )
+        
+    def _equiv_attrs(self):
+        return (self.vmfClass, self.id, self.visGroupId)
+        
+        
+class HideObject(VMFDelta):
+    def __init__(self, vmfClass, id):
+        self.vmfClass = vmfClass
+        self.id = id
+        super(HideObject, self).__init__()
+        
+    def __repr__(self):
+        return "HideObject({}, {})".format(
+            repr(self.vmfClass),
+            repr(self.id),
+        )
+        
+    def _equiv_attrs(self):
+        return (self.vmfClass, self.id)
+        
+        
+class UnHideObject(VMFDelta):
+    def __init__(self, vmfClass, id):
+        self.vmfClass = vmfClass
+        self.id = id
+        super(UnHideObject, self).__init__()
+        
+    def __repr__(self):
+        return "UnHideObject({}, {})".format(
+            repr(self.vmfClass),
+            repr(self.id),
+        )
+        
+    def _equiv_attrs(self):
+        return (self.vmfClass, self.id)
+        
+        
 def merge_delta_lists(deltaLists, aggressive=False):
     """ Takes multiple lists of deltas, and merges them into a single list of
     deltas that can be used to mutate the parent VMF into a merged VMF with 
@@ -259,6 +381,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
     # The delta types we care about, in the order that we care about.
     deltaTypes = (
         AddObject,
+        RemoveFromVisGroup,
+        AddToVisGroup,
         TieSolid,
         UntieSolid,
         RemoveObject,
@@ -268,6 +392,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
         ChangeProperty,
         AddOutput,
         RemoveOutput,
+        # HideObject,
+        # UnHideObject,
     )
     
     # For keeping track of what deltas have been merged so far.
