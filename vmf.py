@@ -671,7 +671,7 @@ def compare_vmfs(parent, child):
     # Relates the IDs of objects in the child to their corresponding new IDs 
     # as part of the parent, for newly-added objects.
     # Keys are stored in (vmfClass, id) tuple form.
-    newObjectIdDict = {}
+    newIdForNewChildObject = {}
     
     # Check for new objects
     for vmfClass, childObject in child.iter_objects():
@@ -679,19 +679,22 @@ def compare_vmfs(parent, child):
         
         if not parent.has_object(vmfClass, id):
             # Assign a new ID to this new object.
+            # NOTE: The use of VMF.next_available_id() makes compare_vmfs() an 
+            # impure function with side-effects on the parent VMF object.
+            # YOU HAVE BEEN WARNED!!!!!
             newId = parent.next_available_id(vmfClass)
             
             # Keep track of the relationship between the child object's ID and 
             # its new ID as part of the parent.
-            newObjectIdDict[(vmfClass, id)] = newId
+            newIdForNewChildObject[(vmfClass, id)] = newId
             
             # Get the parent information for the new object.
             newObjectParentInfo = child.get_object_parent_info(vmfClass, id)
             
             # The new object's designated parent object might also be a new 
             # object. If so, correlate it with the proper new ID.
-            if newObjectParentInfo in newObjectIdDict:
-                newObjectParentId = newObjectIdDict[newObjectParentInfo]
+            if newObjectParentInfo in newIdForNewChildObject:
+                newObjectParentId = newIdForNewChildObject[newObjectParentInfo]
                 newObjectParentInfo = (
                     newObjectParentInfo[0],
                     newObjectParentId,
@@ -814,9 +817,9 @@ def compare_vmfs(parent, child):
         if solidId not in parent.entityIdForSolidId:
             # Only tie the solid if we don't already have an AddObject delta
             # that adds it as the child of an Entity object.
-            if (VMF.SOLID, solidId) not in newObjectIdDict:
+            if (VMF.SOLID, solidId) not in newIdForNewChildObject:
                 # Retrieve the new Entity's ID as part of the parent.
-                newId = newObjectIdDict[(VMF.ENTITY, entityId)]
+                newId = newIdForNewChildObject[(VMF.ENTITY, entityId)]
                 
                 newDelta = TieSolid(solidId, newId)
                 deltas.append(newDelta)
