@@ -18,30 +18,32 @@ from argparse import ArgumentParser
 from vmf import VMF, load_vmfs, get_parent, compare_vmfs
 from vmfdelta import DeltaMergeConflict, merge_delta_lists
 
-_parser = ArgumentParser(
+
+def parse_args():
+    parser = ArgumentParser(
         description="VMF Merge Tool",
     )
-    
-_parser.add_argument(
+
+    parser.add_argument(
         '--version',
         action='version',
         version=__version__,
     )
-    
-_parser.add_argument(
+
+    parser.add_argument(
         '-v', '--verbose',
         action='store_true',
         help="Noisily display progress messages throughout the procedure.",
     )
-    
-_parser.add_argument(
+
+    parser.add_argument(
         'vmfs',
         nargs='+',
         metavar='vmf',
         help="The name of a *.vmf file, or the path to a *.vmf file.",
     )
-    
-_parser.add_argument(
+
+    parser.add_argument(
         '-n', '--no-auto-parent',
         action='store_true',
         help=
@@ -50,8 +52,8 @@ _parser.add_argument(
             "list is the parent. (Can be dangerous-- Use with care!)"
             ,
     )
-    
-_parser.add_argument(
+
+    parser.add_argument(
         '-i', '--dump-individual',
         action='store_true',
         help=
@@ -59,8 +61,8 @@ _parser.add_argument(
             "to stdout."
             ,
     )
-    
-_parser.add_argument(
+
+    parser.add_argument(
         '-p', '--dump-proposed',
         action='store_true',
         help=
@@ -68,29 +70,31 @@ _parser.add_argument(
             "to stdout."
             ,
     )
-    
-_parser.add_argument(
+
+    parser.add_argument(
         '-A', '--aggressive',
         action='store_true',
         help="Enable aggressive conflict resolution.",
     )
+
+    return parser.parse_args()
     
-_args = _parser.parse_args()
-
-
+    
 def main():
-    vmfPaths = _args.vmfs
-    verbose = _args.verbose
-    aggressive = _args.aggressive
-    autoParent = not _args.no_auto_parent
-    dumpIndividual = _args.dump_individual
-    dumpProposed = _args.dump_proposed
+    args = parse_args()
+    
+    vmfPaths = args.vmfs
+    verbose = args.verbose
+    aggressive = args.aggressive
+    autoParent = not args.no_auto_parent
+    dumpIndividual = args.dump_individual
+    dumpProposed = args.dump_proposed
     
     if dumpProposed and dumpIndividual:
         sys.stderr.write(
-                "ERROR: --dump-individual and --dump-proposed are mutually "
-                "exclusive!\n"
-            )
+            "ERROR: --dump-individual and --dump-proposed are mutually "
+            "exclusive!\n"
+        )
         return 1
         
     startTime = datetime.now()
