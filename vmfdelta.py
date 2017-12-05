@@ -11,8 +11,10 @@ import vmf
 class DeltaMergeConflict(Exception):
     """ A conflict was detected while merging deltas. """
     
-    def __init__(self, partialDeltas=None):
+    def __init__(self, partialDeltas, conflictedDeltas):
         self.partialDeltas = partialDeltas
+        self.conflictedDeltas = conflictedDeltas
+        
         super(DeltaMergeConflict, self).__init__(
             "WARNING: Merge conflict(s) detected. "
             "Human intervention will be required for conflict resolution."
@@ -66,11 +68,11 @@ class VMFDelta(object):
         
         
 class AddObject(VMFDelta):
-    def __init__(self, parent, vmfClass, id):
+    def __init__(self, parent, vmfClass, id, originFile=None):
         self.parent = parent
         self.vmfClass = vmfClass
         self.id = id
-        super(AddObject, self).__init__()
+        super(AddObject, self).__init__(originFile)
         
     def __repr__(self):
         return "AddObject({}, {}, {})".format(
@@ -79,19 +81,15 @@ class AddObject(VMFDelta):
             repr(self.id),
         )
         
-    def __eq__(self, other):
-        # AddObject deltas are always completely unique.
-        return other is self
-        
-    def __hash__(self):
-        return hash((self.parent, self.vmfClass, self.id))
+    def _equiv_attrs(self):
+        return (self.vmfClass, self.id)
         
         
 class RemoveObject(VMFDelta):
-    def __init__(self, vmfClass, id):
+    def __init__(self, vmfClass, id, originFile=None):
         self.vmfClass = vmfClass
         self.id = id
-        super(RemoveObject, self).__init__()
+        super(RemoveObject, self).__init__(originFile)
         
     def __repr__(self):
         return "RemoveObject({}, {})".format(
@@ -104,10 +102,10 @@ class RemoveObject(VMFDelta):
         
         
 class ChangeObject(VMFDelta):
-    def __init__(self, vmfClass, id):
+    def __init__(self, vmfClass, id, originFile=None):
         self.vmfClass = vmfClass
         self.id = id
-        super(ChangeObject, self).__init__()
+        super(ChangeObject, self).__init__(originFile)
         
     def __repr__(self):
         return "ChangeObject({}, {})".format(
@@ -120,12 +118,12 @@ class ChangeObject(VMFDelta):
         
         
 class AddProperty(VMFDelta):
-    def __init__(self, vmfClass, id, key, value):
+    def __init__(self, vmfClass, id, key, value, originFile=None):
         self.vmfClass = vmfClass
         self.id = id
         self.key = key
         self.value = value
-        super(AddProperty, self).__init__()
+        super(AddProperty, self).__init__(originFile)
         
     def __repr__(self):
         return "AddProperty({}, {}, {}, {})".format(
@@ -140,11 +138,11 @@ class AddProperty(VMFDelta):
         
         
 class RemoveProperty(VMFDelta):
-    def __init__(self, vmfClass, id, key):
+    def __init__(self, vmfClass, id, key, originFile=None):
         self.vmfClass = vmfClass
         self.id = id
         self.key = key
-        super(RemoveProperty, self).__init__()
+        super(RemoveProperty, self).__init__(originFile)
         
     def __repr__(self):
         return "RemoveProperty({}, {}, {})".format(
@@ -158,12 +156,12 @@ class RemoveProperty(VMFDelta):
         
         
 class ChangeProperty(VMFDelta):
-    def __init__(self, vmfClass, id, key, value):
+    def __init__(self, vmfClass, id, key, value, originFile=None):
         self.vmfClass = vmfClass
         self.id = id
         self.key = key
         self.value = value
-        super(ChangeProperty, self).__init__()
+        super(ChangeProperty, self).__init__(originFile)
         
     def __repr__(self):
         return "ChangeProperty({}, {}, {}, {})".format(
@@ -178,10 +176,10 @@ class ChangeProperty(VMFDelta):
         
         
 class TieSolid(VMFDelta):
-    def __init__(self, solidId, entityId):
+    def __init__(self, solidId, entityId, originFile=None):
         self.solidId = solidId
         self.entityId = entityId
-        super(TieSolid, self).__init__()
+        super(TieSolid, self).__init__(originFile)
         
     def __repr__(self):
         return "TieSolid({}, {})".format(
@@ -194,9 +192,9 @@ class TieSolid(VMFDelta):
         
         
 class UntieSolid(VMFDelta):
-    def __init__(self, solidId):
+    def __init__(self, solidId, originFile=None):
         self.solidId = solidId
-        super(UntieSolid, self).__init__()
+        super(UntieSolid, self).__init__(originFile)
         
     def __repr__(self):
         return "UntieSolid({})".format(
@@ -208,12 +206,12 @@ class UntieSolid(VMFDelta):
         
         
 class AddOutput(VMFDelta):
-    def __init__(self, entityId, output, value, outputId):
+    def __init__(self, entityId, output, value, outputId, originFile=None):
         self.entityId = entityId
         self.output = output
         self.value = value
         self.outputId = outputId
-        super(AddOutput, self).__init__()
+        super(AddOutput, self).__init__(originFile)
         
     def __repr__(self):
         return "AddOutput({}, {}, {}, {})".format(
@@ -228,12 +226,12 @@ class AddOutput(VMFDelta):
         
         
 class RemoveOutput(VMFDelta):
-    def __init__(self, entityId, output, value, outputId):
+    def __init__(self, entityId, output, value, outputId, originFile=None):
         self.entityId = entityId
         self.output = output
         self.value = value
         self.outputId = outputId
-        super(RemoveOutput, self).__init__()
+        super(RemoveOutput, self).__init__(originFile)
         
     def __repr__(self):
         return "RemoveOutput({}, {}, {}, {})".format(
@@ -248,10 +246,10 @@ class RemoveOutput(VMFDelta):
         
         
 class MoveVisGroup(VMFDelta):
-    def __init__(self, visGroupId, parentId):
+    def __init__(self, visGroupId, parentId, originFile=None):
         self.visGroupId = visGroupId
         self.parentId = parentId
-        super(MoveVisGroup, self).__init__()
+        super(MoveVisGroup, self).__init__(originFile)
         
     def __repr__(self):
         return "MoveVisGroup({}, {})".format(
@@ -264,11 +262,11 @@ class MoveVisGroup(VMFDelta):
         
         
 class AddToVisGroup(VMFDelta):
-    def __init__(self, vmfClass, id, visGroupId):
+    def __init__(self, vmfClass, id, visGroupId, originFile=None):
         self.vmfClass = vmfClass
         self.id = id
         self.visGroupId = visGroupId
-        super(AddToVisGroup, self).__init__()
+        super(AddToVisGroup, self).__init__(originFile)
         
     def __repr__(self):
         return "AddToVisGroup({}, {}, {})".format(
@@ -282,11 +280,11 @@ class AddToVisGroup(VMFDelta):
         
         
 class RemoveFromVisGroup(VMFDelta):
-    def __init__(self, vmfClass, id, visGroupId):
+    def __init__(self, vmfClass, id, visGroupId, originFile=None):
         self.vmfClass = vmfClass
         self.id = id
         self.visGroupId = visGroupId
-        super(RemoveFromVisGroup, self).__init__()
+        super(RemoveFromVisGroup, self).__init__(originFile)
         
     def __repr__(self):
         return "RemoveFromVisGroup({}, {}, {})".format(
@@ -300,10 +298,10 @@ class RemoveFromVisGroup(VMFDelta):
         
         
 class HideObject(VMFDelta):
-    def __init__(self, vmfClass, id):
+    def __init__(self, vmfClass, id, originFile=None):
         self.vmfClass = vmfClass
         self.id = id
-        super(HideObject, self).__init__()
+        super(HideObject, self).__init__(originFile)
         
     def __repr__(self):
         return "HideObject({}, {})".format(
@@ -316,10 +314,10 @@ class HideObject(VMFDelta):
         
         
 class UnHideObject(VMFDelta):
-    def __init__(self, vmfClass, id):
+    def __init__(self, vmfClass, id, originFile=None):
         self.vmfClass = vmfClass
         self.id = id
-        super(UnHideObject, self).__init__()
+        super(UnHideObject, self).__init__(originFile)
         
     def __repr__(self):
         return "UnHideObject({}, {})".format(
@@ -349,10 +347,10 @@ def merge_delta_lists(deltaLists, aggressive=False):
     # The delta types we care about, in the order that we care about.
     deltaTypes = (
         AddObject,
-        TieSolid,
-        UntieSolid,
         RemoveObject,
         ChangeObject,
+        TieSolid,
+        UntieSolid,
         AddProperty,
         RemoveProperty,
         ChangeProperty,
@@ -369,16 +367,52 @@ def merge_delta_lists(deltaLists, aggressive=False):
     # Maps deltas to themselves, so that they can be retrieved for comparison.
     mergedDeltasDict = OrderedDict()
     
+    # For keeping track of what deltas are conflicted.
+    # Maps deltas to a list of all deltas that are "equal" to that delta, so 
+    # we can retrieve all deltas that conflict.
+    conflictedDeltasDict = OrderedDict()
+    
+    def iter_processed_deltas(delta):
+        ''' Returns an iterator over all merged and conflicted deltas that are 
+        "equivalent" to the given delta.
+        
+        '''
+        
+        if delta in mergedDeltasDict:
+            yield mergedDeltasDict[delta]
+            
+        if delta in conflictedDeltasDict:
+            for other in conflictedDeltasDict[delta]:
+                yield other
+                
+    def add_conflicted_delta(delta):
+        ''' Adds the given delta to the conflictedDeltasDict, and removes it 
+        from the mergedDeltasDict (if applicable).
+        
+        '''
+        
+        # If the conflicting delta is in the mergedDeltasDict, remove it.
+        if delta in mergedDeltasDict and delta is mergedDeltasDict[delta]:
+            del mergedDeltasDict[delta]
+            
+        try:
+            conflictedDeltasDict[delta].append(delta)
+        except KeyError:
+            conflictedDeltasDict[delta] = [delta]
+            
     def merge(delta):
         ''' Attempts to merge the given delta into the mergedDeltasDict.
         
-        If a merge conflict is detected, emits a warning, discards the 
-        conflicting deltas, and raises DeltaMergeConflict.
+        If a merge conflict is detected, emits a warning, and adds the 
+        conflicting deltas to conflictedDeltasDict.
         
         '''
         
         if isinstance(delta, ChangeObject):
             # Check for conflicts with RemoveObject deltas.
+            # Note that RemoveObject deltas never get added to the 
+            # conflictedDeltasDict, so there's no need to use 
+            # iter_processed_deltas() here.
             removeObjectDelta = RemoveObject(delta.vmfClass, delta.id)
             if removeObjectDelta in mergedDeltasDict:
                 other = mergedDeltasDict[removeObjectDelta]
@@ -391,35 +425,51 @@ def merge_delta_lists(deltaLists, aggressive=False):
                 print '\t', delta
                 print '\t', other
                 
-                # Discard the RemoveObject delta and insert the ChangeObject 
-                # delta, because it makes human intervention a bit easier.
-                del mergedDeltasDict[removeObjectDelta]
-                mergedDeltasDict[delta] = delta
-                
-                raise DeltaMergeConflict
+                # Keep the RemoveObject delta, and put the ChangeObject delta 
+                # into the conflictedDeltasDict.
+                add_conflicted_delta(delta)
+                return
                 
         elif isinstance(delta, AddProperty):
-            # Check for conflicts with other AddProperty deltas.
-            if delta in mergedDeltasDict:
-                other = mergedDeltasDict[delta]
+            # Is the corresponding ChangeObject or AddObject delta already 
+            # conflicted?
+            changeObjectDelta = ChangeObject(delta.vmfClass, delta.id)
+            addObjectDelta = AddObject(None, delta.vmfClass, delta.id)
+            
+            if (changeObjectDelta in conflictedDeltasDict
+                    or addObjectDelta in conflictedDeltasDict):
+                # If so, this delta is automatically also conflicted.
+                add_conflicted_delta(delta)
+                return
                 
-                if other.value != delta.value:
-                    # Conflict!
-                    print (
-                        "CONFLICT WARNING: AddProperty conflict detected!"
-                    )
-                    print '\t', delta
-                    print '\t', other
+            # Otherwise, check for conflicts with other AddProperty deltas.
+            for other in iter_processed_deltas(delta):
+                if other.value == delta.value:
+                    # Save an indent level.
+                    continue
                     
-                    # Discard the conflicting delta and don't try to insert 
-                    # the current delta into the dictionary.
-                    del mergedDeltasDict[other]
-                    
-                    raise DeltaMergeConflict
-                    
+                # Conflict!
+                print (
+                    "CONFLICT WARNING: AddProperty conflict detected!"
+                )
+                print '\t', delta
+                print '\t', other
+                
+                add_conflicted_delta(delta)
+                add_conflicted_delta(other)
+                return
+                
         elif isinstance(delta, ChangeProperty):
+            # Is the corresponding ChangeObject delta already conflicted?
+            changeObjectDelta = ChangeObject(delta.vmfClass, delta.id)
+            if changeObjectDelta in conflictedDeltasDict:
+                # If so, this delta is automatically also conflicted.
+                add_conflicted_delta(delta)
+                return
+                
+            # If this is a VisGroup delta, check to see if the VisGroup was 
+            # removed.
             if delta.vmfClass == VMF.VISGROUP:
-                # Check to see if the VisGroup was removed.
                 removeVisGroupDelta = RemoveObject(VMF.VISGROUP, delta.id)
                 if removeVisGroupDelta in mergedDeltasDict:
                     # The relevant VisGroup was removed; there's no need to 
@@ -427,12 +477,20 @@ def merge_delta_lists(deltaLists, aggressive=False):
                     return
                     
             # Check for conflicts with RemoveProperty deltas.
-            removePropertyDelta = RemoveProperty(
-                delta.vmfClass,
-                delta.id,
-                delta.key,
+            removePropertyDeltas = iter_processed_deltas(
+                RemoveProperty(
+                    delta.vmfClass,
+                    delta.id,
+                    delta.key,
+                )
             )
-            if removePropertyDelta in mergedDeltasDict:
+            
+            try:
+                other = next(removePropertyDeltas)
+            except StopIteration:
+                # Don't do anything if there are no RemoveProperty deltas.
+                pass
+            else:
                 # Conflict!
                 print (
                     "CONFLICT WARNING: ChangeProperty delta conflicts "
@@ -441,59 +499,87 @@ def merge_delta_lists(deltaLists, aggressive=False):
                 print '\t', delta
                 print '\t', other
                 
-                # Discard the RemoveProperty delta and insert the 
-                # ChangeProperty delta, because it makes human intervention a 
-                # bit easier.
-                del mergedDeltasDict[removePropertyDelta]
-                mergedDeltasDict[delta] = delta
-                
-                raise DeltaMergeConflict
+                add_conflicted_delta(delta)
+                add_conflicted_delta(other)
+                return
                 
             # Check for conflicts with other ChangeProperty deltas.
-            if delta in mergedDeltasDict:
-                other = mergedDeltasDict[delta]
+            for other in iter_processed_deltas(delta):
+                if other.value == delta.value:
+                    # Save an indent level.
+                    continue
+                    
+                # Conflict!
+                print (
+                    "CONFLICT WARNING: ChangeProperty conflict "
+                    "detected!"
+                )
+                print '\t', delta
+                print '\t', other
                 
-                if other.value != delta.value:
-                    # Conflict!
-                    print (
-                        "CONFLICT WARNING: ChangeProperty conflict "
-                        "detected!"
-                    )
-                    print '\t', delta
-                    print '\t', other
-                    
-                    # Discard the conflicting delta and don't try to insert 
-                    # the current delta into the dictionary.
-                    del mergedDeltasDict[other]
-                    
-                    raise DeltaMergeConflict
-                    
+                add_conflicted_delta(delta)
+                add_conflicted_delta(other)
+                return
+                
         elif isinstance(delta, TieSolid):
-            # Check for conflicts with other TieSolid deltas.
-            if delta in mergedDeltasDict:
-                other = mergedDeltasDict[delta]
+            # Is the corresponding ChangeObject delta already conflicted?
+            changeObjectDelta = ChangeObject(VMF.SOLID, delta.solidId)
+            if changeObjectDelta in conflictedDeltasDict:
+                # If so, this delta is automatically also conflicted.
+                add_conflicted_delta(delta)
                 
-                if other.entityId != delta.entityId:
-                    # Conflict!
-                    print (
-                        "CONFLICT WARNING: TieSolid conflict detected!"
-                    )
-                    print '\t', delta
-                    print '\t', other
+                # We need to also mark the corresponding AddObject delta for 
+                # the entity as conflicted (if the entity is new).
+                addEntityDelta = AddObject(None, VMF.ENTITY, delta.entityId)
+                if addEntityDelta in mergedDeltasDict:
+                    actualAddEntityDelta = mergedDeltasDict[addEntityDelta]
+                    add_conflicted_delta(actualAddEntityDelta)
                     
-                    # Discard the conflicting delta and don't try to insert 
-                    # the current delta into the dictionary.
-                    del mergedDeltasDict[other]
+                return
+                
+            # Check for conflicts with other TieSolid deltas.
+            for other in iter_processed_deltas(delta):
+                if other.entityId == delta.entityId:
+                    # Save an indent level.
+                    continue
                     
-                    raise DeltaMergeConflict
+                # Conflict!
+                print (
+                    "CONFLICT WARNING: TieSolid conflict detected!"
+                )
+                print '\t', delta
+                print '\t', other
+                
+                add_conflicted_delta(delta)
+                add_conflicted_delta(other)
+                
+                # We need to also mark the corresponding AddObject delta for 
+                # the entity as conflicted (if the entity is new).
+                addEntityDelta = AddObject(None, VMF.ENTITY, delta.entityId)
+                if addEntityDelta in mergedDeltasDict:
+                    actualAddEntityDelta = mergedDeltasDict[addEntityDelta]
+                    add_conflicted_delta(actualAddEntityDelta)
                     
-        elif (isinstance(delta, MoveVisGroup)
-                or isinstance(delta, AddToVisGroup)):
+                return
+                
+        elif isinstance(delta, MoveVisGroup):
             # Check to see if the VisGroup was removed.
             removeVisGroupDelta = RemoveObject(VMF.VISGROUP, delta.visGroupId)
             if removeVisGroupDelta in mergedDeltasDict:
                 # The relevant VisGroup was removed; there's no need to add 
                 # this delta.
+                return
+                
+        elif isinstance(delta, AddToVisGroup):
+            # Check to see if the VisGroup was removed, or if the relevant
+            # object was removed.
+            removeVisGroupDelta = RemoveObject(VMF.VISGROUP, delta.visGroupId)
+            removeObjectDelta = RemoveObject(delta.vmfClass, delta.id)
+            
+            if (removeVisGroupDelta in mergedDeltasDict
+                    or removeObjectDelta in mergedDeltasDict):
+                # The relevant VisGroup/object was removed; there's no need to 
+                # add this delta.
                 return
                 
         # Merge the delta into the dictionary.
@@ -514,19 +600,28 @@ def merge_delta_lists(deltaLists, aggressive=False):
         for delta in deltas:
             deltasForDeltaType[type(delta)].append(delta)
             
-    conflicted = False
+    # Merge!
     for deltas in deltasForDeltaType.itervalues():
         for delta in deltas:
-            try:
-                merge(delta)
-            except DeltaMergeConflict:
-                conflicted = True
-                
+            merge(delta)
+            
     # The result is simply the list of keys in the mergedDeltasDict.
     mergedDeltas = mergedDeltasDict.keys()
     
-    if conflicted:
-        raise DeltaMergeConflict(mergedDeltas)
+    if conflictedDeltasDict:
+        # Uh oh, there were conflicts!
+        
+        # Flatten the conflicts dictionary.
+        conflictedDeltas = [
+            delta
+            for deltas in conflictedDeltasDict.itervalues()
+                for delta in deltas
+        ]
+        
+        conflictedDeltas.sort(key=lambda delta: deltaTypes.index(type(delta)))
+        
+        raise DeltaMergeConflict(mergedDeltas, conflictedDeltas)
+        
     else:
         return mergedDeltas
         
