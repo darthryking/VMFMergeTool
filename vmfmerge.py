@@ -19,7 +19,7 @@ from vmf import VMF, load_vmfs, get_parent, compare_vmfs
 from vmfdelta import DeltaMergeConflict, merge_delta_lists
 
 
-def parse_args():
+def parse_args(argv):
     parser = ArgumentParser(
         description="VMF Merge Tool",
     )
@@ -77,11 +77,11 @@ def parse_args():
         help="Enable aggressive conflict resolution.",
     )
 
-    return parser.parse_args()
+    return parser.parse_args(argv)
     
     
-def main():
-    args = parse_args()
+def main(argv):
+    args = parse_args(argv[1:])
     
     vmfPaths = args.vmfs
     verbose = args.verbose
@@ -151,5 +151,5 @@ def main():
     
     
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(main(sys.argv))
     
