@@ -17,25 +17,24 @@ class TestVisGroups(unittest.TestCase):
         
         deltas = vmf.compare_vmfs(parentVmf, childVmf)
         
-        expected = set(
-            get_properties(
-                [
-                    vmfdelta.AddObject(None, VMF.VISGROUP, 1),
-                    vmfdelta.AddProperty(
-                        VMF.VISGROUP, 1,
-                        'name', "Test 1",
-                    ),
-                    vmfdelta.AddProperty(
-                        VMF.VISGROUP, 1,
-                        'color', '100 117 234',
-                    ),
-                    vmfdelta.AddToVisGroup(VMF.SOLID, 2, 1),
-                ]
-            )
+        expected = get_properties(
+            [
+                vmfdelta.AddObject(None, VMF.VISGROUP, 1),
+                vmfdelta.AddProperty(
+                    VMF.VISGROUP, 1,
+                    'name', "Test 1",
+                ),
+                vmfdelta.AddProperty(
+                    VMF.VISGROUP, 1,
+                    'color', '100 117 234',
+                ),
+                vmfdelta.AddToVisGroup(VMF.SOLID, 2, 1),
+            ]
         )
-        actual = set(get_properties(deltas))
         
-        self.assertEquals(expected, actual)
+        actual = get_properties(deltas)
+        
+        self.assertEqual(expected, actual)
         
     def test_remove_visgroup(self):
         pass

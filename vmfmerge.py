@@ -132,7 +132,13 @@ def main(argv):
         print str(e)
         mergedDeltas = e.partialDeltas
         
+        print ""
+        print "Conflicted deltas:"
+        print '\n'.join(repr(delta) for delta in e.conflictedDeltas)
+        print ""
+        
     if dumpProposed:
+        print "Merged deltas:"
         print '\n'.join(repr(delta) for delta in mergedDeltas)
         return 0
         
