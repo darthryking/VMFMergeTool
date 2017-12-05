@@ -5,6 +5,7 @@ vmfdelta.py
 """
 
 from collections import OrderedDict
+import vmf
 
 
 class DeltaMergeConflict(Exception):
@@ -27,6 +28,7 @@ class VMFDelta(object):
     def __init__(self, originFile=None):
         # The file from which this delta originated.
         self.originFile = originFile
+        self._type = self.__class__.__name__
         
     def _equiv_attrs(self):
         ''' Gives a tuple of attributes that matter for the purposes of 
@@ -79,7 +81,7 @@ class AddObject(VMFDelta):
         
     def __eq__(self, other):
         # AddObject deltas are always completely unique.
-        return False
+        return other is self
         
     def __hash__(self):
         return hash((self.parent, self.vmfClass, self.id))
@@ -245,58 +247,20 @@ class RemoveOutput(VMFDelta):
         return (self.entityId, self.output, self.outputId)
         
         
-# class AddVisGroup(VMFDelta):
-    # def __init__(self, parentId, id, name, color):
-        # self.parentId = parentId
-        # self.id = id
-        # self.name = name
-        # self.color = color
-        # super(AddVisGroup, self).__init__()
-        
-    # def __repr__(self):
-        # return "AddVisGroup({}, {}, {}, {})".format(
-            # repr(self.parentId),
-            # repr(self.id),
-            # repr(self.name),
-            # repr(self.color),
-        # )
-        
-    # def __eq__(self, other):
-        # # AddVisGroup deltas are always completely unique.
-        # return False
-        
-    # def __hash__(self):
-        # return hash((self.parentId, self.id, self.name, self.color))
-        
-        
-# class RemoveVisGroup(VMFDelta):
-    # def __init__(self, id):
-        # self.id = id
-        # super(RemoveVisGroup, self).__init__()
-        
-    # def __repr__(self):
-        # return "RemoveVisGroup({})".format(
-            # repr(self.id),
-        # )
-        
-    # def _equiv_attrs(self):
-        # return (self.id,)
-        
-        
 class MoveVisGroup(VMFDelta):
-    def __init__(self, id, parentId):
-        self.id = id
+    def __init__(self, visGroupId, parentId):
+        self.visGroupId = visGroupId
         self.parentId = parentId
         super(MoveVisGroup, self).__init__()
         
     def __repr__(self):
         return "MoveVisGroup({}, {})".format(
-            repr(self.id),
+            repr(self.visGroupId),
             repr(self.parentId),
         )
         
     def _equiv_attrs(self):
-        return (self.id,)
+        return (self.visGroupId,)
         
         
 class AddToVisGroup(VMFDelta):
@@ -378,11 +342,13 @@ def merge_delta_lists(deltaLists, aggressive=False):
     
     """
     
+    # Because otherwise we get circular imports if we use 
+    # `from vmf import VMF`. Ugh.
+    VMF = vmf.VMF
+    
     # The delta types we care about, in the order that we care about.
     deltaTypes = (
         AddObject,
-        RemoveFromVisGroup,
-        AddToVisGroup,
         TieSolid,
         UntieSolid,
         RemoveObject,
@@ -392,6 +358,9 @@ def merge_delta_lists(deltaLists, aggressive=False):
         ChangeProperty,
         AddOutput,
         RemoveOutput,
+        MoveVisGroup,
+        AddToVisGroup,
+        RemoveFromVisGroup,
         # HideObject,
         # UnHideObject,
     )
@@ -449,6 +418,14 @@ def merge_delta_lists(deltaLists, aggressive=False):
                     raise DeltaMergeConflict
                     
         elif isinstance(delta, ChangeProperty):
+            if delta.vmfClass == VMF.VISGROUP:
+                # Check to see if the VisGroup was removed.
+                removeVisGroupDelta = RemoveObject(VMF.VISGROUP, delta.id)
+                if removeVisGroupDelta in mergedDeltasDict:
+                    # The relevant VisGroup was removed; there's no need to 
+                    # add the ChangeProperty delta.
+                    return
+                    
             # Check for conflicts with RemoveProperty deltas.
             removePropertyDelta = RemoveProperty(
                 delta.vmfClass,
@@ -510,6 +487,15 @@ def merge_delta_lists(deltaLists, aggressive=False):
                     
                     raise DeltaMergeConflict
                     
+        elif (isinstance(delta, MoveVisGroup)
+                or isinstance(delta, AddToVisGroup)):
+            # Check to see if the VisGroup was removed.
+            removeVisGroupDelta = RemoveObject(VMF.VISGROUP, delta.visGroupId)
+            if removeVisGroupDelta in mergedDeltasDict:
+                # The relevant VisGroup was removed; there's no need to add 
+                # this delta.
+                return
+                
         # Merge the delta into the dictionary.
         mergedDeltasDict[delta] = delta
         

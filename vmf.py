@@ -17,7 +17,9 @@ from vmfdelta import (
     AddProperty, RemoveProperty, ChangeProperty, 
     TieSolid, UntieSolid,
     AddOutput, RemoveOutput,
+    MoveVisGroup,
     AddToVisGroup, RemoveFromVisGroup,
+    HideObject, UnHideObject,
 )
 
 
@@ -39,7 +41,7 @@ class VMF(object):
             self.vmfClass = vmfClass
             self.objectId = id
             
-            super(ObjectDoesNotExist, self).__init__(
+            super(VMF.ObjectDoesNotExist, self).__init__(
                 "Object with class '{}' and id {} does not exist!".format(
                     vmfClass,
                     id,
@@ -168,14 +170,19 @@ class VMF(object):
                     update_last_id(VMF.SIDE, sideId)
                     
         def iter_visgroups(visGroupsObject):
-            if VMF.VISGROUP not in visGroupsObject:
+            try:
+                topLevelVisGroups = visGroupsObject[VMF.VISGROUP]
+            except KeyError:
                 return
+                
+            if not isinstance(topLevelVisGroups, list):
+                topLevelVisGroups = [topLevelVisGroups]
                 
             # Breadth-first traversal of the VisGroup tree.
             # We iterate over all tuples of (parent, VisGroup).
             visGroupQ = deque(
                 (None, visGroup)    # Top-level VisGroups have no parent.
-                for visGroup in visGroupsObject[VMF.VISGROUP]
+                for visGroup in topLevelVisGroups
             )
             while visGroupQ:
                 parent, visGroup = visGroupQ.popleft()
@@ -228,18 +235,23 @@ class VMF(object):
             raise InvalidVMF(self.path, "VMF has no world entry!")
             
         # Add VisGroups
-        for parent, visGroup in iter_visgroups(vmfData['visgroups']):
-            id = get_visgroup_id(visGroup)
-            self.visGroupsById[id] = visGroup
-            
-            if parent is not None:
-                self.parentInfoForObject[(VMF.VISGROUP, id)] = (
-                    VMF.VISGROUP,
-                    get_visgroup_id(parent),
-                )
+        try:
+            visGroupsObject = vmfData['visgroups']
+        except KeyError:
+            return
+        else:
+            for parent, visGroup in iter_visgroups(visGroupsObject):
+                id = get_visgroup_id(visGroup)
+                self.visGroupsById[id] = visGroup
                 
-            update_last_id(VMF.VISGROUP, id)
-            
+                if parent is not None:
+                    self.parentInfoForObject[(VMF.VISGROUP, id)] = (
+                        VMF.VISGROUP,
+                        get_visgroup_id(parent),
+                    )
+                    
+                update_last_id(VMF.VISGROUP, id)
+                
     def write_path(self, path):        
         ''' Saves this VMF to the given path. '''
         
@@ -397,10 +409,15 @@ class VMF(object):
         parentInfo = self.get_object_parent_info(vmfClass, id)
         
         if parentInfo is None:
-            # Special case where we remove the VMF object from the root VMF 
-            # data.
-            parent = self.vmfData
-            
+            if vmfClass == VMF.VISGROUP:
+                # Special case where we remove the VisGroup from the root 
+                # VisGroups object.
+                parent = self.vmfData['visgroups']
+            else:
+                # Special case where we remove the VMF object from the root 
+                # VMF data.
+                parent = self.vmfData
+                
         else:
             parent = self.get_object(*parentInfo)
             
@@ -409,21 +426,23 @@ class VMF(object):
             
         assert isinstance(parent, dict)
         
-        # Remove the object from its current parent.
-        objectEntry = parent[vmfClass]
-        try:
-            objectEntry.remove(vmfObject)
-        except AttributeError:
-            # The entry is a dict, i.e. it's the last entry. Remove it.
-            assert isinstance(objectEntry, dict)
-            del parent[vmfClass]
-        else:
-            if len(objectEntry) == 1:
-                # The entry is now a singleton list. Flatten it to simply 
-                # refer to the object itself.
-                parent[vmfClass] = objectEntry[0]
+        remove_object_entry(parent, vmfClass, vmfObject)
+        
+        # # Remove the object from its current parent.
+        # objectEntry = parent[vmfClass]
+        # try:
+            # objectEntry.remove(vmfObject)
+        # except AttributeError:
+            # # The entry is a dict, i.e. it's the last entry. Remove it.
+            # assert isinstance(objectEntry, dict)
+            # del parent[vmfClass]
+        # else:
+            # if len(objectEntry) == 1:
+                # # The entry is now a singleton list. Flatten it to simply 
+                # # refer to the object itself.
+                # parent[vmfClass] = objectEntry[0]
                 
-    def apply_deltas(self, deltas):
+    def apply_deltas(self, deltas, incrementRevision=True):
         ''' Applies the given deltas to the VMF data and increments the VMF 
         revision number.
         
@@ -437,13 +456,17 @@ class VMF(object):
         for delta in deltas:
             if isinstance(delta, AddObject):
                 # Create the new object.
-                newObject = OrderedDict(id=delta.id)
-                
+                if delta.vmfClass == VMF.VISGROUP:
+                    newObject = OrderedDict(visgroupid=delta.id)
+                else:
+                    newObject = OrderedDict(id=delta.id)
+                    
                 # Add the new object to the appropriate object dictionary.
                 {
-                    VMF.SOLID   :   self.solidsById,
-                    VMF.SIDE    :   self.sidesById,
-                    VMF.ENTITY  :   self.entitiesById,
+                    VMF.SOLID       :   self.solidsById,
+                    VMF.SIDE        :   self.sidesById,
+                    VMF.ENTITY      :   self.entitiesById,
+                    VMF.VISGROUP    :   self.visGroupsById,
                 }[delta.vmfClass][delta.id] = newObject
                 
                 # Add the object to the VMF data under its designated parent.
@@ -467,9 +490,10 @@ class VMF(object):
                     
                 # Remove the object from the appropriate object dictionary.
                 del {
-                    VMF.SOLID   :   self.solidsById,
-                    VMF.SIDE    :   self.sidesById,
-                    VMF.ENTITY  :   self.entitiesById,
+                    VMF.SOLID       :   self.solidsById,
+                    VMF.SIDE        :   self.sidesById,
+                    VMF.ENTITY      :   self.entitiesById,
+                    VMF.VISGROUP    :   self.visGroupsById,
                 }[delta.vmfClass][delta.id]
                 
                 # Keep track of everything that we have removed so far.
@@ -532,7 +556,49 @@ class VMF(object):
                     (VMF.WORLD, get_id(self.world)),
                 )
                 
-        # Increment revision number.
+            elif isinstance(delta, MoveVisGroup):
+                self.remove_object_from_data(VMF.VISGROUP, delta.visGroupId)
+                
+                parentId = delta.parentId
+                
+                if parentId is None:
+                    newParentInfo = None
+                else:
+                    newParentInfo = (VMF.VISGROUP, parentId)
+                
+                self.add_object_to_data(
+                    VMF.VISGROUP,
+                    delta.visGroupId,
+                    newParentInfo,
+                )
+                
+            elif isinstance(delta, AddToVisGroup):
+                vmfObject = self.get_object(delta.vmfClass, delta.id)
+                
+                visGroupsSet = get_object_visgroups(vmfObject)
+                visGroupsSet.add(delta.visGroupId)
+                
+                set_object_visgroups(vmfObject, visGroupsSet)
+                
+            elif isinstance(delta, RemoveFromVisGroup):
+                vmfObject = self.get_object(delta.vmfClass, delta.id)
+                
+                visGroupsSet = get_object_visgroups(vmfObject)
+                visGroupsSet.remove(delta.visGroupId)
+                
+                set_object_visgroups(vmfObject, visGroupsSet)
+                
+            elif isinstance(delta, HideObject):
+                pass
+                
+            elif isinstance(delta, UnHideObject):
+                pass
+                
+        if incrementRevision:
+            self.increment_revision()
+            
+    def increment_revision(self):
+        """ Increment revision number. """
         self.revision += 1
         self.vmfData['versioninfo']['mapversion'] = self.revision
         self.world['mapversion'] = self.revision
@@ -673,6 +739,28 @@ def delete_object_property(vmfObject, property):
             del object[key]
             
             
+def get_object_visgroups(vmfObject):
+    """ Get the set of the given object's VisGroups, with IDs in integer form.
+    """
+    
+    try:
+        return set(
+            int(visGroupId) for visGroupId in get_object_property(
+                vmfObject,
+                VMF.VISGROUP_PROPERTY_PATH,
+            )
+        )
+    except KeyError:
+        return set()
+        
+        
+def set_object_visgroups(vmfObject, visGroups):
+    """ Set the given object's VisGroups. """
+    
+    visGroups = sorted(str(visGroupId) for visGroupId in visGroups)
+    set_object_property(vmfObject, VMF.VISGROUP_PROPERTY_PATH, visGroups)
+    
+    
 def iter_properties(vmfObject):
     """ Returns an iterator over all of the given object's properties and 
     sub-properties, in the form of key/value pairs.
@@ -719,7 +807,7 @@ def iter_outputs(entity):
     
     # Keeps track of how many of each output we have seen so far.
     # Maps (output, value) pairs to an integer count.
-    outputValueCountsDict = {}
+    countForOutputValue = {}
     
     for output, values in connections.iteritems():
         if isinstance(values, basestring):
@@ -728,14 +816,14 @@ def iter_outputs(entity):
         assert isinstance(values, list)
         
         for value in values:
-            count = outputValueCountsDict.get((output, value), 0)
+            count = countForOutputValue.get((output, value), 0)
             
             yield (output, value, count)
             
             try:
-                outputValueCountsDict[(output, value)] += 1
+                countForOutputValue[(output, value)] += 1
             except KeyError:
-                outputValueCountsDict[(output, value)] = 1
+                countForOutputValue[(output, value)] = 1
                 
                 
 def compare_vmfs(parent, child):
@@ -822,11 +910,13 @@ def compare_vmfs(parent, child):
             
             # Add each of the object's properties.
             for key, value in iter_properties(childObject):
-                if vmfClass == VMF.VISGROUP and key == VMF.VISGROUP:
-                    # Don't add child VisGroup objects as new properties of a
-                    # parent VisGroup.
-                    continue
-                    
+                if vmfClass == VMF.VISGROUP:
+                    if key in (VMF.VISGROUP, 'visgroupid'):
+                        # Don't add child VisGroup objects as new properties 
+                        # of a parent VisGroup, and don't add the 'visgroupid' 
+                        # key of a VisGroup object as a new property.
+                        continue
+                        
                 if key == VMF.VISGROUP_PROPERTY_PATH:
                     # Special-case an object's VisGroup properties.
                     add_visgroup_deltas(vmfClass, newId, [], value)
@@ -852,6 +942,10 @@ def compare_vmfs(parent, child):
         
         '''
         
+        if vmfClass == VMF.VISGROUP:
+            # Don't add ChangeObject deltas for VisGroups.
+            return
+            
         objectInfo = (vmfClass, id)
         
         while objectInfo is not None:
@@ -859,46 +953,70 @@ def compare_vmfs(parent, child):
             
             newDelta = ChangeObject(vmfClass, id)
             
-            if newDelta not in objectChangedDeltaSet:
-                objectChangedDeltaSet.add(newDelta)
-                deltas.append(newDelta)
-            else:
+            if newDelta in objectChangedDeltaSet:
                 break
                 
+            objectChangedDeltaSet.add(newDelta)
+            deltas.append(newDelta)
+            
             objectInfo = parent.get_object_parent_info(vmfClass, id)
             
     # Check for changed/deleted objects.
     for vmfClass, parentObject in parent.iter_objects():
-        id = get_id(parentObject)
+        id = get_id(
+            parentObject,
+            idPropName='visgroupid' if vmfClass == VMF.VISGROUP else 'id',
+        )
         
         try:
             childObject = child.get_object(vmfClass, id)
-            
         except VMF.ObjectDoesNotExist:
             # Object was deleted.
             newDelta = RemoveObject(vmfClass, id)
             deltas.append(newDelta)
             continue    # Doing this saves an extra indentation level.
             
-        # Update the object's VisGroups.
-        try:
-            parentVisGroupIds = get_object_property(
-                parentObject,
-                VMF.VISGROUP_PROPERTY_PATH,
-            )
-        except KeyError:
-            parentVisGroupIds = []
+        # If this object is a VisGroup, was it reparented?
+        if vmfClass == VMF.VISGROUP:
+            parentParentInfo = parent.get_object_parent_info(vmfClass, id)
+            childParentInfo = child.get_object_parent_info(vmfClass, id)
             
-        try:
-            childVisGroupIds = get_object_property(
-                childObject,
-                VMF.VISGROUP_PROPERTY_PATH,
+            if parentParentInfo != childParentInfo:
+                # This VisGroup was reparented.
+                
+                if childParentInfo is None:
+                    newParentId = None
+                else:
+                    _, newParentId = childParentInfo
+                    
+                newDelta = MoveVisGroup(id, newParentId)
+                deltas.append(newDelta)
+                
+        # All other objects need to get their VisGroup deltas figured out.
+        else:
+            # Get the parent and child objects' VisGroups
+            try:
+                parentVisGroupIds = get_object_property(
+                    parentObject,
+                    VMF.VISGROUP_PROPERTY_PATH,
+                )
+            except KeyError:
+                parentVisGroupIds = []
+                
+            try:
+                childVisGroupIds = get_object_property(
+                    childObject,
+                    VMF.VISGROUP_PROPERTY_PATH,
+                )
+            except KeyError:
+                childVisGroupIds = []
+                
+            # Update the object's VisGroups.
+            add_visgroup_deltas(
+                vmfClass, id,
+                parentVisGroupIds, childVisGroupIds
             )
-        except KeyError:
-            childVisGroupIds = []
             
-        add_visgroup_deltas(vmfClass, id, parentVisGroupIds, childVisGroupIds)
-        
         # Check for new properties.
         for key, value in iter_properties(childObject):
             if key == VMF.VISGROUP_PROPERTY_PATH:
