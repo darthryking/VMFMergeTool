@@ -16,10 +16,10 @@ VMFMergeTool merges VMF sources in a process consisting of four stages:
 
 Current version: ___0.0.0 DEV___
 
-###Requirements
+### Requirements
 * Python 2.7
 
-###Usage
+### Usage
 ```
 vmfmerge.py [-h] [--version] [-v] [-n] [-i] [-p] [-A] vmf [vmf ...]
 
