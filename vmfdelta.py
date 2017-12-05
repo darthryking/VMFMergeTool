@@ -363,11 +363,11 @@ def merge_delta_lists(deltaLists, aggressive=False):
         # UnHideObject,
     )
     
-    # For keeping track of what deltas have been merged so far.
+    # For keeping track of which deltas have been merged so far.
     # Maps deltas to themselves, so that they can be retrieved for comparison.
     mergedDeltasDict = OrderedDict()
     
-    # For keeping track of what deltas are conflicted.
+    # For keeping track of which deltas are conflicted.
     # Maps deltas to a list of all deltas that are "equal" to that delta, so 
     # we can retrieve all deltas that conflict.
     conflictedDeltasDict = OrderedDict()
