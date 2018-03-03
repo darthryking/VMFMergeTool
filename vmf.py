@@ -53,10 +53,11 @@ class VMF(object):
     WORLD = 'world'
     SOLID = 'solid'
     SIDE = 'side'
+    GROUP = 'group'
     ENTITY = 'entity'
     VISGROUP = 'visgroup'
     
-    CLASSES = (WORLD, SOLID, SIDE, ENTITY, VISGROUP)
+    CLASSES = (WORLD, SOLID, SIDE, GROUP, ENTITY, VISGROUP)
     
     # Used to delimit sub-property paths. We choose a sequence containing 
     # at least one double quote, because the double quote is the only human-
@@ -67,6 +68,9 @@ class VMF(object):
     
     # The full property path to an object's 'visgroupid' sub-property.
     VISGROUP_PROPERTY_PATH = PROPERTY_DELIMITER.join(('editor', 'visgroupid'))
+    
+    # The full property path to an object's 'groupid' sub-property.
+    GROUP_PROPERTY_PATH = PROPERTY_DELIMITER.join(('editor', 'groupid'))
     
     @classmethod
     def from_path(cls, path):
@@ -102,6 +106,7 @@ class VMF(object):
         self.world = None
         self.solidsById = OrderedDict()
         self.sidesById = OrderedDict()
+        self.groupsById = OrderedDict()
         self.entitiesById = OrderedDict()
         self.visGroupsById = OrderedDict()
         
@@ -217,6 +222,21 @@ class VMF(object):
                 
                 add_solids_from_object(vmfClass, value)
                 
+                # Add groups
+                if VMF.GROUP not in value:
+                    continue
+                    
+                for group in value[VMF.GROUP]:
+                    groupId = get_id(group)
+                    self.groupsById[groupId] = group
+                    
+                    self.parentInfoForObject[(VMF.GROUP, groupId)] = (
+                        VMF.GROUP,
+                        groupId,
+                    )
+                    
+                    update_last_id(VMF.GROUP, groupId)
+                    
             elif vmfClass == VMF.ENTITY:
                 if isinstance(value, dict):
                     value = [value]
@@ -272,6 +292,12 @@ class VMF(object):
         except KeyError:
             raise VMF.ObjectDoesNotExist(VMF.SIDE, id)
             
+    def get_group(self, id):
+        try:
+            return self.groupsById[id]
+        except KeyError:
+            raise VMF.ObjectDoesNotExist(VMF.GROUP, id)
+            
     def get_entity(self, id):
         try:
             return self.entitiesById[id]
@@ -289,6 +315,7 @@ class VMF(object):
             VMF.WORLD       :   lambda id: self.world,
             VMF.SOLID       :   self.get_solid,
             VMF.SIDE        :   self.get_side,
+            VMF.GROUP       :   self.get_group,
             VMF.ENTITY      :   self.get_entity,
             VMF.VISGROUP    :   self.get_visgroup,
         }[vmfClass](id)
@@ -298,6 +325,7 @@ class VMF(object):
             VMF.WORLD       :   {get_id(self.world) : self.world},
             VMF.SOLID       :   self.solidsById,
             VMF.SIDE        :   self.sidesById,
+            VMF.GROUP       :   self.groupsById,
             VMF.ENTITY      :   self.entitiesById,
             VMF.VISGROUP    :   self.visGroupsById,
         }[vmfClass]
@@ -307,6 +335,9 @@ class VMF(object):
         
     def iter_sides(self):
         return self.sidesById.itervalues()
+        
+    def iter_groups(self):
+        return self.groupsById.itervalues()
         
     def iter_entities(self):
         return self.entitiesById.itervalues()
@@ -337,6 +368,7 @@ class VMF(object):
                         (VMF.ENTITY, self.iter_entities()),
                         (VMF.SOLID, self.iter_solids()),
                         (VMF.SIDE, self.iter_sides()),
+                        (VMF.GROUP, self.iter_groups()),
                     )
                 for vmfObject in iterator
         )
@@ -451,6 +483,7 @@ class VMF(object):
                 {
                     VMF.SOLID       :   self.solidsById,
                     VMF.SIDE        :   self.sidesById,
+                    VMF.GROUP       :   self.groupsById,
                     VMF.ENTITY      :   self.entitiesById,
                     VMF.VISGROUP    :   self.visGroupsById,
                 }[delta.vmfClass][delta.id] = newObject
@@ -478,6 +511,7 @@ class VMF(object):
                 del {
                     VMF.SOLID       :   self.solidsById,
                     VMF.SIDE        :   self.sidesById,
+                    VMF.GROUP       :   self.groupsById,
                     VMF.ENTITY      :   self.entitiesById,
                     VMF.VISGROUP    :   self.visGroupsById,
                 }[delta.vmfClass][delta.id]
@@ -1026,6 +1060,15 @@ def compare_vmfs(parent, child):
                 
             if not object_has_property(parentObject, key):
                 add_object_changed_deltas(vmfClass, id)
+                
+                if key == VMF.GROUP_PROPERTY_PATH:
+                    # The group ID needs to be updated with the correct group 
+                    # ID as part of the parent.
+                    childGroupID = int(value)
+                    value = str(
+                        newIdForNewChildObject[(VMF.GROUP, childGroupID)]
+                    )
+                    
                 newDelta = AddProperty(
                     vmfClass,
                     id,
@@ -1052,6 +1095,15 @@ def compare_vmfs(parent, child):
             if childPropertyValue != value:
                 # Property was changed.
                 add_object_changed_deltas(vmfClass, id)
+                
+                if key == VMF.GROUP_PROPERTY_PATH:
+                    # The group ID needs to be updated with the correct group 
+                    # ID as part of the parent.
+                    childGroupID = int(childPropertyValue)
+                    value = str(
+                        newIdForNewChildObject[(VMF.GROUP, childGroupID)]
+                    )
+                    
                 newDelta = ChangeProperty(
                     vmfClass,
                     id,
