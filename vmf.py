@@ -428,20 +428,6 @@ class VMF(object):
         
         remove_object_entry(parent, vmfClass, vmfObject)
         
-        # # Remove the object from its current parent.
-        # objectEntry = parent[vmfClass]
-        # try:
-            # objectEntry.remove(vmfObject)
-        # except AttributeError:
-            # # The entry is a dict, i.e. it's the last entry. Remove it.
-            # assert isinstance(objectEntry, dict)
-            # del parent[vmfClass]
-        # else:
-            # if len(objectEntry) == 1:
-                # # The entry is now a singleton list. Flatten it to simply 
-                # # refer to the object itself.
-                # parent[vmfClass] = objectEntry[0]
-                
     def apply_deltas(self, deltas, incrementRevision=True):
         ''' Applies the given deltas to the VMF data and increments the VMF 
         revision number.
@@ -948,7 +934,7 @@ def compare_vmfs(parent, child):
             
         objectInfo = (vmfClass, id)
         
-        while objectInfo is not None:
+        while True:
             vmfClass, id = objectInfo
             
             newDelta = ChangeObject(vmfClass, id)
@@ -959,7 +945,22 @@ def compare_vmfs(parent, child):
             objectChangedDeltaSet.add(newDelta)
             deltas.append(newDelta)
             
-            objectInfo = parent.get_object_parent_info(vmfClass, id)
+            parentInfo = parent.get_object_parent_info(vmfClass, id)
+            
+            if parentInfo is None:
+                break
+                
+            parentClass, parentId = parentInfo
+            
+            if parentClass == VMF.ENTITY:
+                assert vmfClass == VMF.SOLID
+                
+                if id not in child.entityIdForSolidId:
+                    # This solid was untied.
+                    # Don't add a ChangeObject delta for the solid's entity.
+                    break
+                    
+            objectInfo = parentInfo
             
     # Check for changed/deleted objects.
     for vmfClass, parentObject in parent.iter_objects():

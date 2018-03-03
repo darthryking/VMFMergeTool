@@ -347,10 +347,10 @@ def merge_delta_lists(deltaLists, aggressive=False):
     # The delta types we care about, in the order that we care about.
     deltaTypes = (
         AddObject,
-        RemoveObject,
-        ChangeObject,
         TieSolid,
         UntieSolid,
+        RemoveObject,
+        ChangeObject,
         AddProperty,
         RemoveProperty,
         ChangeProperty,
