@@ -16,7 +16,10 @@ from datetime import datetime
 from argparse import ArgumentParser
 
 from vmf import VMF, load_vmfs, get_parent, compare_vmfs
-from vmfdelta import DeltaMergeConflict, merge_delta_lists
+from vmfdelta import (
+    DeltaMergeConflict,
+    merge_delta_lists, create_conflict_resolution_deltas,
+)
 
 
 def parse_args(argv):
@@ -114,18 +117,30 @@ def main(argv):
     
     # Generate lists of deltas for each child.
     print "Generating delta lists..."
-    deltaLists = [compare_vmfs(parent, child) for child in children]
+    deltaListForChild = {
+        child : compare_vmfs(parent, child)
+        for child in children
+    }
     
     if dumpIndividual:
-        for deltas in deltaLists:
+        for child, deltas in deltaListForChild.iteritems():
+            print "Deltas for {}:".format(child.path)
             print '\n'.join(repr(delta) for delta in deltas)
             print ""
             
         return 0
         
+    # Fix up all deltas so that they have references to their origin VMF.
+    for child, deltas in deltaListForChild.iteritems():
+        for delta in deltas:
+            delta.originVMF = child
+            
     # Merge the delta lists into a single list of deltas, to be applied on top 
     # of the parent.
     print "Merging deltas..."
+    
+    deltaLists = deltaListForChild.values()
+    
     try:
         mergedDeltas = merge_delta_lists(deltaLists, aggressive=aggressive)
     except DeltaMergeConflict as e:
@@ -136,6 +151,17 @@ def main(argv):
         print "Conflicted deltas:"
         print '\n'.join(repr(delta) for delta in e.conflictedDeltas)
         print ""
+        
+        conflictResolutionDeltas = create_conflict_resolution_deltas(
+            parent, e.conflictedDeltas
+        )
+        
+        # print ""
+        # print "Conflict resolution deltas:"
+        # print '\n'.join(repr(delta) for delta in conflictResolutionDeltas)
+        # print ""
+        
+        mergedDeltas += conflictResolutionDeltas
         
     if dumpProposed:
         print "Merged deltas:"

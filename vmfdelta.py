@@ -4,7 +4,10 @@ vmfdelta.py
 
 """
 
+import os
+import copy
 from collections import OrderedDict
+
 import vmf
 
 
@@ -86,17 +89,34 @@ class AddObject(VMFDelta):
         
         
 class RemoveObject(VMFDelta):
-    def __init__(self, vmfClass, id, originVMF=None):
+    def __init__(self, vmfClass, id, cascadedRemovals=None, originVMF=None):
         self.vmfClass = vmfClass
         self.id = id
+        
+        # This field is used to list sub-objects that must also be removed 
+        # if this object is to be removed, in (vmfClass, id) form.
+        self.cascadedRemovals = cascadedRemovals
+        
+        # The cascadedRemovals attribute in and of itself does not cause the 
+        # removal of those sub-objects; it merely establishes a relationship 
+        # between this delta and the deltas that are responsible for removing 
+        # the sub-objects.
+        
         super(RemoveObject, self).__init__(originVMF)
         
     def __repr__(self):
-        return "RemoveObject({}, {})".format(
-            repr(self.vmfClass),
-            repr(self.id),
-        )
-        
+        if self.cascadedRemovals is not None:
+            return "RemoveObject({}, {}, {})".format(
+                repr(self.vmfClass),
+                repr(self.id),
+                repr(self.cascadedRemovals),
+            )
+        else:
+            return "RemoveObject({}, {})".format(
+                repr(self.vmfClass),
+                repr(self.id),
+            )
+            
     def _equiv_attrs(self):
         return (self.vmfClass, self.id)
         
@@ -410,13 +430,16 @@ def merge_delta_lists(deltaLists, aggressive=False):
         
         if isinstance(delta, ChangeObject):
             # Check for conflicts with RemoveObject deltas.
-            # Note that RemoveObject deltas never get added to the 
-            # conflictedDeltasDict, so there's no need to use 
-            # iter_processed_deltas() here.
-            removeObjectDelta = RemoveObject(delta.vmfClass, delta.id)
-            if removeObjectDelta in mergedDeltasDict:
-                other = mergedDeltasDict[removeObjectDelta]
-                
+            removeObjectDeltas = iter_processed_deltas(
+                RemoveObject(delta.vmfClass, delta.id)
+            )
+            
+            try:
+                other = next(removeObjectDeltas)
+            except StopIteration:
+                # Don't do anything if there are no RemoveObject deltas.
+                pass
+            else:
                 # Conflict!
                 print (
                     "CONFLICT WARNING: ChangeObject delta conflicts with "
@@ -425,9 +448,40 @@ def merge_delta_lists(deltaLists, aggressive=False):
                 print '\t', delta
                 print '\t', other
                 
-                # Keep the RemoveObject delta, and put the ChangeObject delta 
-                # into the conflictedDeltasDict.
                 add_conflicted_delta(delta)
+                add_conflicted_delta(other)
+                
+                # If a ChangeObject delta conflicts with a RemoveObject delta,
+                # then it also must conflict with all of the RemoveObject 
+                # deltas corresponding to the removed object's children.
+                
+                def cascade_removal_conflict(conflictedDelta):
+                    ''' Recursively marks the given delta's cascaded child 
+                    deltas as conflicted.
+                    
+                    '''
+                    
+                    assert isinstance(conflictedDelta, RemoveObject)
+                    
+                    cascadedRemovals = conflictedDelta.cascadedRemovals
+                    
+                    if cascadedRemovals is not None:
+                        for childClass, childId in cascadedRemovals:
+                            childRemovalDelta = RemoveObject(
+                                childClass, childId
+                            )
+                            if childRemovalDelta in mergedDeltasDict:
+                                actualChildRemovalDelta = mergedDeltasDict[
+                                    childRemovalDelta
+                                ]
+                                
+                                add_conflicted_delta(actualChildRemovalDelta)
+                                
+                                cascade_removal_conflict(
+                                    actualChildRemovalDelta
+                                )
+                                
+                cascade_removal_conflict(other)
                 return
                 
         elif isinstance(delta, AddProperty):
@@ -478,11 +532,7 @@ def merge_delta_lists(deltaLists, aggressive=False):
                     
             # Check for conflicts with RemoveProperty deltas.
             removePropertyDeltas = iter_processed_deltas(
-                RemoveProperty(
-                    delta.vmfClass,
-                    delta.id,
-                    delta.key,
-                )
+                RemoveProperty(delta.vmfClass, delta.id, delta.key)
             )
             
             try:
@@ -600,6 +650,10 @@ def merge_delta_lists(deltaLists, aggressive=False):
         for delta in deltas:
             deltasForDeltaType[type(delta)].append(delta)
             
+    # Reverse the RemoveObject delta list, to allow for cascaded merge 
+    # conflict detection.
+    deltasForDeltaType[RemoveObject].reverse()
+    
     # Merge!
     for deltas in deltasForDeltaType.itervalues():
         for delta in deltas:
@@ -626,3 +680,204 @@ def merge_delta_lists(deltaLists, aggressive=False):
         return mergedDeltas
         
         
+def create_conflict_resolution_deltas(parent, conflictedDeltas):
+    """ Takes a parent VMF and a list of conflicted deltas for that VMF, and 
+    returns new deltas that, when applied to the parent, will create new 
+    VisGroups that can be used for in-Hammer conflict resolution.
+    
+    """
+    
+    # Because otherwise we get circular imports if we use 
+    # `from vmf import VMF`. Ugh.
+    VMF = vmf.VMF
+    
+    result = []
+    
+    # Create the root conflict resolution VisGroup.
+    conflictVisGroupId = parent.next_available_id(VMF.VISGROUP)
+    conflictVisGroupInfo = (VMF.VISGROUP, conflictVisGroupId)
+    result.append(AddObject(None, VMF.VISGROUP, conflictVisGroupId))
+    result.append(
+        AddProperty(
+            VMF.VISGROUP, conflictVisGroupId,
+            'name', "Merge Conflicts",
+        )
+    )
+    result.append(
+        AddProperty(
+            VMF.VISGROUP, conflictVisGroupId,
+            'color', '255 0 0',
+        )
+    )
+    
+    def create_conflict_visgroup(visGroupName):
+        ''' Adds deltas to `result` that create a new conflict resolution 
+        VisGroup with the given name under the root conflict VisGroup, and
+        returns the ID of the new VisGroup.
+        
+        '''
+        
+        visGroupId = parent.next_available_id(VMF.VISGROUP)
+        
+        result.append(
+            AddObject(
+                conflictVisGroupInfo,
+                VMF.VISGROUP, visGroupId,
+            )
+        )
+        result.append(
+            AddProperty(
+                VMF.VISGROUP, visGroupId,
+                'name', visGroupName,
+            )
+        )
+        result.append(
+            AddProperty(
+                VMF.VISGROUP, visGroupId,
+                'color', '255 0 0',
+            )
+        )
+        
+        return visGroupId
+        
+    # Create the parent's conflict resolution VisGroup, that holds the 
+    # original objects as the were in the parent.
+    parentVisGroupId = create_conflict_visgroup(os.path.basename(parent.path))
+    
+    # Maps each child VMF to its respective conflict resolution VisGroup.
+    changedVisGroupIdForChild = {}
+    removedVisGroupIdForChild = {}
+    
+    # Maps each child VMF to a dictionary that maps original object info to 
+    # its cloned object info for that child.
+    cloneIdForObjectInfoForChild = {}
+    
+    # Set of AddToVisGroup deltas that we use to deduplicate deltas that add 
+    # an affected object to the parent's conflict resolution VisGroup.
+    newAddToVisGroupDeltas = set()
+    
+    for delta in conflictedDeltas:
+        child = delta.originVMF
+        
+        # Get information about the object that would have been affected by 
+        # the delta's change.
+        if (isinstance(delta, AddOutput)
+                or isinstance(delta, RemoveOutput)
+                or isinstance(delta, TieSolid)
+                or isinstance(delta, UntieSolid)
+                ):
+            affectedObjectClass = VMF.ENTITY
+            affectedObjectId = delta.entityId
+        else:
+            affectedObjectClass = delta.vmfClass
+            affectedObjectId = delta.id
+            
+        if affectedObjectClass in (VMF.WORLD, VMF.GROUP, VMF.VISGROUP):
+            # Do NOT touch the World, Groups, or VisGroups!
+            # Those conflicts will just have to be fixed without the aid of 
+            # conflict resolution VisGroups.
+            continue
+            
+        elif affectedObjectClass == VMF.SIDE:
+            # The affected object should be the Side's parent, not the Side 
+            # itself.
+            parentClass, parentId = parent.get_object_parent_info(
+                affectedObjectClass, affectedObjectId
+            )
+            affectedObjectClass = parentClass
+            affectedObjectId = parentId
+            
+        affectedObjectInfo = (affectedObjectClass, affectedObjectId)
+        
+        if isinstance(delta, RemoveObject):
+            # Add the affected object to the child's removal conflict 
+            # resolution VisGroup.
+            try:
+                childVisGroupId = removedVisGroupIdForChild[child]
+            except KeyError:
+                # Create the conflict resolution VisGroup if it doesn't exist.
+                childVisGroupId = create_conflict_visgroup(
+                    "Removed in {}".format(os.path.basename(child.path))
+                )
+                removedVisGroupIdForChild[child] = childVisGroupId
+                
+            newDelta = AddToVisGroup(
+                affectedObjectClass, affectedObjectId,
+                childVisGroupId,
+            )
+            # ... but don't add this delta more than once.
+            if newDelta not in newAddToVisGroupDeltas:
+                result.append(newDelta)
+                newAddToVisGroupDeltas.add(newDelta)
+                
+        else:
+            # Add the affected object to the parent's conflict resolution 
+            # VisGroup.
+            newDelta = AddToVisGroup(
+                affectedObjectClass, affectedObjectId,
+                parentVisGroupId,
+            )
+            # ... but don't add this delta more than once.
+            if newDelta not in newAddToVisGroupDeltas:
+                result.append(newDelta)
+                newAddToVisGroupDeltas.add(newDelta)
+                
+            # Clone the affected object, if this is the first time doing so 
+            # for this child.
+            if (child not in cloneIdForObjectInfoForChild
+                    or affectedObjectInfo
+                        not in cloneIdForObjectInfoForChild[child]):
+                        
+                cloneIdForObjectInfo = {}
+                cloneDeltas = parent.clone_object_deferred(
+                    affectedObjectClass, affectedObjectId,
+                    cloneIdsDict=cloneIdForObjectInfo,
+                )
+                result += cloneDeltas
+                
+                assert affectedObjectInfo in cloneIdForObjectInfo
+                
+                # Add the clone IDs to the clones dict.
+                if child in cloneIdForObjectInfoForChild:
+                    cloneIdForObjectInfo.update(
+                        cloneIdForObjectInfoForChild[child]
+                    )
+                    
+                cloneIdForObjectInfoForChild[child] = cloneIdForObjectInfo
+                
+                # Get the clone's new ID.
+                cloneId = cloneIdForObjectInfo[affectedObjectInfo]
+                
+                # Get the child's conflict resolution VisGroup.
+                try:
+                    childVisGroupId = changedVisGroupIdForChild[child]
+                except KeyError:
+                    # Create the conflict resolution VisGroup if it doesn't 
+                    # exist.
+                    childVisGroupId = create_conflict_visgroup(
+                        "Changed in {}".format(os.path.basename(child.path))
+                    )
+                    changedVisGroupIdForChild[child] = childVisGroupId
+                    
+                # Add the cloned object to the conflict resolution VisGroup.
+                result.append(
+                    AddToVisGroup(
+                        affectedObjectClass, cloneId,
+                        childVisGroupId
+                    )
+                )
+                
+            assert child in cloneIdForObjectInfoForChild
+            cloneIdForObjectInfo = cloneIdForObjectInfoForChild[child]
+            
+            assert affectedObjectInfo in cloneIdForObjectInfo
+            
+            # Apply the conflicted delta to the cloned object.
+            cloneDelta = copy.copy(delta)
+            cloneDeltaObjectInfo = (cloneDelta.vmfClass, cloneDelta.id)
+            cloneDelta.id = cloneIdForObjectInfo[cloneDeltaObjectInfo]
+            result.append(cloneDelta)
+            
+    return result
+    
+    
