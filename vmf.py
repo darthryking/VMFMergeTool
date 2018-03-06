@@ -227,7 +227,11 @@ class VMF(object):
                 if VMF.GROUP not in value:
                     continue
                     
-                for group in value[VMF.GROUP]:
+                groups = value[VMF.GROUP]
+                if not isinstance(groups, list):
+                    groups = [groups]
+                    
+                for group in groups:
                     groupId = get_id(group)
                     self.groupsById[groupId] = group
                     
@@ -356,8 +360,9 @@ class VMF(object):
         lower-level containers that are dependent on those higher-level 
         containers.
         
-        Also note that we iterate over VisGroups FIRST. This is to ensure that 
-        all new VisGroups exist before we start adding to them.
+        Also note that we iterate over VisGroups and Groups FIRST. This is to 
+        ensure that all new VisGroups and Groups exist before we start adding 
+        to them.
         
         '''
         
@@ -365,11 +370,11 @@ class VMF(object):
             (vmfClass, vmfObject)
             for vmfClass, iterator in (
                         (VMF.VISGROUP, self.iter_visgroups()),
+                        (VMF.GROUP, self.iter_groups()),
                         (VMF.WORLD, (self.world,)),
                         (VMF.ENTITY, self.iter_entities()),
                         (VMF.SOLID, self.iter_solids()),
                         (VMF.SIDE, self.iter_sides()),
-                        (VMF.GROUP, self.iter_groups()),
                     )
                 for vmfObject in iterator
         )
@@ -1040,7 +1045,16 @@ def compare_vmfs(parent, child):
                         value = [value]
                         
                     add_visgroup_deltas(vmfClass, newId, [], value)
+                    
                 else:
+                    if key == VMF.GROUP_PROPERTY_PATH:
+                        # The group ID needs to be updated with the correct 
+                        # group ID as part of the parent.
+                        childGroupID = int(value)
+                        value = str(
+                            newIdForNewChildObject[(VMF.GROUP, childGroupID)]
+                        )
+                        
                     # Add the property as an AddProperty delta.
                     newDelta = AddProperty(vmfClass, newId, key, value)
                     deltas.append(newDelta)
@@ -1193,7 +1207,7 @@ def compare_vmfs(parent, child):
                     # The group ID needs to be updated with the correct group 
                     # ID as part of the parent.
                     childGroupID = int(childPropertyValue)
-                    value = str(
+                    childPropertyValue = str(
                         newIdForNewChildObject[(VMF.GROUP, childGroupID)]
                     )
                     
