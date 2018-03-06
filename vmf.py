@@ -960,6 +960,9 @@ def compare_vmfs(parent, child):
     # The list of VMFDeltas to be returned.
     deltas = []
     
+    # Cubemap brush face property deltas that will need to be fixed up later.
+    cubemapDeltas = []
+    
     # Relates the IDs of objects in the child to their corresponding new IDs 
     # as part of the parent, for newly-added objects.
     # Keys are stored in (vmfClass, id) tuple form.
@@ -1059,6 +1062,13 @@ def compare_vmfs(parent, child):
                     newDelta = AddProperty(vmfClass, newId, key, value)
                     deltas.append(newDelta)
                     
+                    # If this is a cubemap, we'll need to fix up its 'sides'
+                    # property later.
+                    if (vmfClass == VMF.ENTITY
+                            and childObject['classname'] == 'env_cubemap'
+                            and key == 'sides'):
+                        cubemapDeltas.append(newDelta)
+                        
             # Add each of the object's outputs as an AddOutput delta, if the 
             # object is an entity.
             if vmfClass == VMF.ENTITY:
@@ -1184,6 +1194,13 @@ def compare_vmfs(parent, child):
                 )
                 deltas.append(newDelta)
                 
+                # If this is a cubemap, we'll need to fix up its 'sides'
+                # property later.
+                if (vmfClass == VMF.ENTITY
+                        and childObject['classname'] == 'env_cubemap'
+                        and key == 'sides'):
+                    cubemapDeltas.append(newDelta)
+                    
         # Check for changed/deleted properties.
         for key, value in iter_properties(parentObject):
             if key == VMF.VISGROUP_PROPERTY_PATH:
@@ -1219,6 +1236,13 @@ def compare_vmfs(parent, child):
                 )
                 deltas.append(newDelta)
                 
+                # If this is a cubemap, we'll need to fix up its 'sides'
+                # property later.
+                if (vmfClass == VMF.ENTITY
+                        and childObject['classname'] == 'env_cubemap'
+                        and key == 'sides'):
+                    cubemapDeltas.append(newDelta)
+                    
         # Deal with entity I/O if the object is an entity.
         if vmfClass == VMF.ENTITY:
             parentOutputSet = frozenset(iter_outputs(parentObject))
@@ -1255,12 +1279,40 @@ def compare_vmfs(parent, child):
                 newDelta = TieSolid(solidId, newId)
                 deltas.append(newDelta)
                 
+        elif parent.entityIdForSolidId[solidId] != entityId:
+            # This solid was untied and retied to a different entity.
+            # Create an UntieSolid and a TieSolid delta to simulate this.
+            newId = newIdForNewChildObject.get(
+                (VMF.ENTITY, entityId),
+                entityId,
+            )
+            
+            deltas.append(UntieSolid(solidId))
+            deltas.append(TieSolid(solidId, newId))
+            
     # Check for untied solids.
     for solidId, entityId in parent.entityIdForSolidId.iteritems():
         if solidId not in child.entityIdForSolidId:
             newDelta = UntieSolid(solidId)
             deltas.append(newDelta)
             
+    # Fix up cubemap deltas, which probably point to the wrong brush faces 
+    # since we messed with the Side IDs.
+    for delta in cubemapDeltas:
+        assert (
+            isinstance(delta, AddProperty)
+            or isinstance(delta, ChangeProperty)
+        )
+        assert delta.vmfClass == VMF.ENTITY
+        assert delta.key == 'sides'
+        
+        sides = (int(sideIdStr) for sideIdStr in delta.value.split())
+        fixedSidesStr = ' '.join(
+            str(newIdForNewChildObject[(VMF.SIDE, sideId)])
+            for sideId in sides
+        )
+        delta.value = fixedSidesStr
+        
     # Done!
     return deltas
     
