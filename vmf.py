@@ -960,8 +960,16 @@ def compare_vmfs(parent, child):
     # The list of VMFDeltas to be returned.
     deltas = []
     
-    # Cubemap brush face property deltas that will need to be fixed up later.
-    cubemapDeltas = []
+    # Classnames of entities that have a "sides" property that refers to a 
+    # list of brush faces that will need to be fixed up.
+    SIDES_ENTITY_CLASSNAMES = (
+        'env_cubemap',
+        'info_overlay',
+    )
+    
+    # Cubemap and overlay brush face property deltas that will need to be 
+    # fixed up later.
+    sidesPropertyDeltas = []
     
     # Relates the IDs of objects in the child to their corresponding new IDs 
     # as part of the parent, for newly-added objects.
@@ -1062,12 +1070,13 @@ def compare_vmfs(parent, child):
                     newDelta = AddProperty(vmfClass, newId, key, value)
                     deltas.append(newDelta)
                     
-                    # If this is a cubemap, we'll need to fix up its 'sides'
-                    # property later.
+                    # If this is an entity that has a 'sides' property, we'll 
+                    # need to fix up its brush face references later.
                     if (vmfClass == VMF.ENTITY
-                            and childObject['classname'] == 'env_cubemap'
+                            and childObject['classname']
+                                in SIDES_ENTITY_CLASSNAMES
                             and key == 'sides'):
-                        cubemapDeltas.append(newDelta)
+                        sidesPropertyDeltas.append(newDelta)
                         
             # Add each of the object's outputs as an AddOutput delta, if the 
             # object is an entity.
@@ -1194,12 +1203,12 @@ def compare_vmfs(parent, child):
                 )
                 deltas.append(newDelta)
                 
-                # If this is a cubemap, we'll need to fix up its 'sides'
-                # property later.
+                # If this is an entity that has a 'sides' property, we'll need 
+                # to fix up its brush face references later.
                 if (vmfClass == VMF.ENTITY
-                        and childObject['classname'] == 'env_cubemap'
+                        and childObject['classname'] in SIDES_ENTITY_CLASSNAMES
                         and key == 'sides'):
-                    cubemapDeltas.append(newDelta)
+                    sidesPropertyDeltas.append(newDelta)
                     
         # Check for changed/deleted properties.
         for key, value in iter_properties(parentObject):
@@ -1236,12 +1245,12 @@ def compare_vmfs(parent, child):
                 )
                 deltas.append(newDelta)
                 
-                # If this is a cubemap, we'll need to fix up its 'sides'
-                # property later.
+                # If this is an entity that has a 'sides' property, we'll need 
+                # to fix up its brush face references later.
                 if (vmfClass == VMF.ENTITY
-                        and childObject['classname'] == 'env_cubemap'
+                        and childObject['classname'] in SIDES_ENTITY_CLASSNAMES
                         and key == 'sides'):
-                    cubemapDeltas.append(newDelta)
+                    sidesPropertyDeltas.append(newDelta)
                     
         # Deal with entity I/O if the object is an entity.
         if vmfClass == VMF.ENTITY:
@@ -1296,9 +1305,9 @@ def compare_vmfs(parent, child):
             newDelta = UntieSolid(solidId)
             deltas.append(newDelta)
             
-    # Fix up cubemap deltas, which probably point to the wrong brush faces 
-    # since we messed with the Side IDs.
-    for delta in cubemapDeltas:
+    # Fix up cubemap and overlay deltas, which probably point to the wrong 
+    # brush faces since we messed with the Side IDs.
+    for delta in sidesPropertyDeltas:
         assert (
             isinstance(delta, AddProperty)
             or isinstance(delta, ChangeProperty)
@@ -1308,7 +1317,12 @@ def compare_vmfs(parent, child):
         
         sides = (int(sideIdStr) for sideIdStr in delta.value.split())
         fixedSidesStr = ' '.join(
-            str(newIdForNewChildObject[(VMF.SIDE, sideId)])
+            str(
+                newIdForNewChildObject.get(
+                    (VMF.SIDE, sideId),
+                    sideId,
+                )
+            )
             for sideId in sides
         )
         delta.value = fixedSidesStr
