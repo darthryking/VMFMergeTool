@@ -901,7 +901,11 @@ def iter_properties(vmfObject):
     ) + VMF.CLASSES
     
     for key, value in vmfObject.iteritems():
-        if key not in IGNORED_KEYS:
+        # Note that we deal with the 'solid' key a bit specially, since it is 
+        # actually a valid property key in non-brush entity objects.
+        if (key not in IGNORED_KEYS
+                or key == VMF.SOLID and isinstance(value, basestring)):
+                
             if isinstance(value, basestring) or isinstance(value, list):
                 yield (key, value)
                 
@@ -1063,7 +1067,10 @@ def compare_vmfs(parent, child):
                         # group ID as part of the parent.
                         childGroupID = int(value)
                         value = str(
-                            newIdForNewChildObject[(VMF.GROUP, childGroupID)]
+                            newIdForNewChildObject.get(
+                                (VMF.GROUP, childGroupID),
+                                childGroupID,
+                            )
                         )
                         
                     # Add the property as an AddProperty delta.
