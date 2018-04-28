@@ -7,6 +7,7 @@ and VMF objects.
 
 """
 
+import os
 import copy
 from collections import OrderedDict, deque
 
@@ -285,6 +286,9 @@ class VMF(object):
         with open(path, 'w') as f:
             f.write(outData)
             
+    def get_filename(self):
+        return os.path.basename(self.path)
+        
     def get_solid(self, id):
         try:
             return self.solidsById[id]

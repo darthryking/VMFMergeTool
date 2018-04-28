@@ -445,8 +445,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
                     "CONFLICT WARNING: ChangeObject delta conflicts with "
                     "RemoveObject delta!"
                 )
-                print '\t', delta
-                print '\t', other
+                print "\tFrom {}:".format(delta.get_origin_filename()), delta
+                print "\tFrom {}:".format(other.get_origin_filename()), other
                 
                 add_conflicted_delta(delta)
                 add_conflicted_delta(other)
@@ -506,8 +506,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
                 print (
                     "CONFLICT WARNING: AddProperty conflict detected!"
                 )
-                print '\t', delta
-                print '\t', other
+                print "\tFrom {}:".format(delta.get_origin_filename()), delta
+                print "\tFrom {}:".format(other.get_origin_filename()), other
                 
                 add_conflicted_delta(delta)
                 add_conflicted_delta(other)
@@ -546,8 +546,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
                     "CONFLICT WARNING: ChangeProperty delta conflicts "
                     "with RemoveProperty delta!"
                 )
-                print '\t', delta
-                print '\t', other
+                print "\tFrom {}:".format(delta.get_origin_filename()), delta
+                print "\tFrom {}:".format(other.get_origin_filename()), other
                 
                 add_conflicted_delta(delta)
                 add_conflicted_delta(other)
@@ -564,8 +564,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
                     "CONFLICT WARNING: ChangeProperty conflict "
                     "detected!"
                 )
-                print '\t', delta
-                print '\t', other
+                print "\tFrom {}:".format(delta.get_origin_filename()), delta
+                print "\tFrom {}:".format(other.get_origin_filename()), other
                 
                 add_conflicted_delta(delta)
                 add_conflicted_delta(other)
@@ -597,8 +597,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
                 print (
                     "CONFLICT WARNING: TieSolid conflict detected!"
                 )
-                print '\t', delta
-                print '\t', other
+                print "\tFrom {}:".format(delta.get_origin_filename()), delta
+                print "\tFrom {}:".format(other.get_origin_filename()), other
                 
                 add_conflicted_delta(delta)
                 add_conflicted_delta(other)
@@ -700,7 +700,7 @@ def create_conflict_resolution_deltas(parent, conflictedDeltas):
     result.append(
         AddProperty(
             VMF.VISGROUP, conflictVisGroupId,
-            'name', "Merge Conflicts",
+            'name', "Manual Merge Required",
         )
     )
     result.append(

@@ -149,7 +149,9 @@ def main(argv):
         
         print ""
         print "Conflicted deltas:"
-        print '\n'.join(repr(delta) for delta in e.conflictedDeltas)
+        for delta in e.conflictedDeltas:
+            print "From {}:".format(delta.get_origin_filename()), repr(delta)
+            
         print ""
         
         conflictResolutionDeltas = create_conflict_resolution_deltas(
