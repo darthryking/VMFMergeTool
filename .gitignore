@@ -62,3 +62,6 @@ out.vmf
 
 # Hammer stuff
 *.vmx
+
+# Maps folder
+/maps/
