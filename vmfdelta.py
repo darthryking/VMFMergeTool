@@ -30,10 +30,24 @@ class VMFDelta(object):
     
     """
     
+    __slots__ = (
+        'originVMF',
+        '_type',
+        '__copy__',
+        '_equiv_attrs',
+        '__eq__',
+        '__hash__',
+        '__repr__',
+        'get_origin_filename',
+    )
+    
     def __init__(self, originVMF=None):
         # The file from which this delta originated.
         self.originVMF = originVMF
         self._type = self.__class__.__name__
+        
+    def __copy__(self):
+        return VMFDelta(self.originVMF)
         
     def _equiv_attrs(self):
         ''' Gives a tuple of attributes that matter for the purposes of 
@@ -69,13 +83,28 @@ class VMFDelta(object):
         
         return hash(self._equiv_attrs())
         
+    def get_origin_filename(self):
+        if self.originVMF is None:
+            return None
+            
+        return self.originVMF.get_filename()
+        
         
 class AddObject(VMFDelta):
+    __slots__ = (
+        'parent',
+        'vmfClass',
+        'id',
+    )
+    
     def __init__(self, parent, vmfClass, id, originVMF=None):
         self.parent = parent
         self.vmfClass = vmfClass
         self.id = id
         super(AddObject, self).__init__(originVMF)
+        
+    def __copy__(self):
+        return AddObject(self.parent, self.vmfClass, self.id, self.originVMF)
         
     def __repr__(self):
         return "AddObject({}, {}, {})".format(
@@ -89,6 +118,12 @@ class AddObject(VMFDelta):
         
         
 class RemoveObject(VMFDelta):
+    __slots__ = (
+        'vmfClass',
+        'id',
+        'cascadedRemovals',
+    )
+    
     def __init__(self, vmfClass, id, cascadedRemovals=None, originVMF=None):
         self.vmfClass = vmfClass
         self.id = id
@@ -103,6 +138,13 @@ class RemoveObject(VMFDelta):
         # the sub-objects.
         
         super(RemoveObject, self).__init__(originVMF)
+        
+    def __copy__(self):
+        return RemoveObject(
+            self.vmfClass, self.id,
+            self.cascadedRemovals,
+            self.originVMF,
+        )
         
     def __repr__(self):
         if self.cascadedRemovals is not None:
@@ -122,10 +164,18 @@ class RemoveObject(VMFDelta):
         
         
 class ChangeObject(VMFDelta):
+    __slots__ = (
+        'vmfClass',
+        'id',
+    )
+    
     def __init__(self, vmfClass, id, originVMF=None):
         self.vmfClass = vmfClass
         self.id = id
         super(ChangeObject, self).__init__(originVMF)
+        
+    def __copy__(self):
+        return ChangeObject(self.vmfClass, self.id, self.originVMF)
         
     def __repr__(self):
         return "ChangeObject({}, {})".format(
@@ -138,12 +188,26 @@ class ChangeObject(VMFDelta):
         
         
 class AddProperty(VMFDelta):
+    __slots__ = (
+        'vmfClass',
+        'id',
+        'key',
+        'value',
+    )
+    
     def __init__(self, vmfClass, id, key, value, originVMF=None):
         self.vmfClass = vmfClass
         self.id = id
         self.key = key
         self.value = value
         super(AddProperty, self).__init__(originVMF)
+        
+    def __copy__(self):
+        return AddProperty(
+            self.vmfClass, self.id,
+            self.key, self.value,
+            self.originVMF,
+        )
         
     def __repr__(self):
         return "AddProperty({}, {}, {}, {})".format(
@@ -158,11 +222,23 @@ class AddProperty(VMFDelta):
         
         
 class RemoveProperty(VMFDelta):
+    __slots__ = (
+        'vmfClass',
+        'id',
+        'key',
+    )
+    
     def __init__(self, vmfClass, id, key, originVMF=None):
         self.vmfClass = vmfClass
         self.id = id
         self.key = key
         super(RemoveProperty, self).__init__(originVMF)
+        
+    def __copy__(self):
+        return RemoveProperty(
+            self.vmfClass, self.id, self.key,
+            self.originVMF,
+        )
         
     def __repr__(self):
         return "RemoveProperty({}, {}, {})".format(
@@ -176,12 +252,26 @@ class RemoveProperty(VMFDelta):
         
         
 class ChangeProperty(VMFDelta):
+    __slots__ = (
+        'vmfClass',
+        'id',
+        'key',
+        'value',
+    )
+    
     def __init__(self, vmfClass, id, key, value, originVMF=None):
         self.vmfClass = vmfClass
         self.id = id
         self.key = key
         self.value = value
         super(ChangeProperty, self).__init__(originVMF)
+        
+    def __copy__(self):
+        return ChangeProperty(
+            self.vmfClass, self.id,
+            self.key, self.value,
+            self.originVMF,
+        )
         
     def __repr__(self):
         return "ChangeProperty({}, {}, {}, {})".format(
@@ -196,10 +286,18 @@ class ChangeProperty(VMFDelta):
         
         
 class TieSolid(VMFDelta):
+    __slots__ = (
+        'solidId',
+        'entityId',
+    )
+    
     def __init__(self, solidId, entityId, originVMF=None):
         self.solidId = solidId
         self.entityId = entityId
         super(TieSolid, self).__init__(originVMF)
+        
+    def __copy__(self):
+        return TieSolid(self.solidId, self.entityId, self.originVMF)
         
     def __repr__(self):
         return "TieSolid({}, {})".format(
@@ -212,9 +310,16 @@ class TieSolid(VMFDelta):
         
         
 class UntieSolid(VMFDelta):
+    __slots__ = (
+        'solidId',
+    )
+    
     def __init__(self, solidId, originVMF=None):
         self.solidId = solidId
         super(UntieSolid, self).__init__(originVMF)
+        
+    def __copy__(self):
+        return UntieSolid(self.solidId, self.originVMF)
         
     def __repr__(self):
         return "UntieSolid({})".format(
@@ -226,12 +331,26 @@ class UntieSolid(VMFDelta):
         
         
 class AddOutput(VMFDelta):
+    __slots__ = (
+        'entityId',
+        'output',
+        'value',
+        'outputId',
+    )
+    
     def __init__(self, entityId, output, value, outputId, originVMF=None):
         self.entityId = entityId
         self.output = output
         self.value = value
         self.outputId = outputId
         super(AddOutput, self).__init__(originVMF)
+        
+    def __copy__(self):
+        return AddOutput(
+            self.entityId,
+            self.output, self.value, self.outputId,
+            self.originVMF,
+        )
         
     def __repr__(self):
         return "AddOutput({}, {}, {}, {})".format(
@@ -246,12 +365,26 @@ class AddOutput(VMFDelta):
         
         
 class RemoveOutput(VMFDelta):
+    __slots__ = (
+        'entityId',
+        'output',
+        'value',
+        'outputId',
+    )
+    
     def __init__(self, entityId, output, value, outputId, originVMF=None):
         self.entityId = entityId
         self.output = output
         self.value = value
         self.outputId = outputId
         super(RemoveOutput, self).__init__(originVMF)
+        
+    def __copy__(self):
+        return RemoveOutput(
+            self.entityId,
+            self.output, self.value, self.outputId,
+            self.originVMF,
+        )
         
     def __repr__(self):
         return "RemoveOutput({}, {}, {}, {})".format(
@@ -266,10 +399,18 @@ class RemoveOutput(VMFDelta):
         
         
 class MoveVisGroup(VMFDelta):
+    __slots__ = (
+        'visGroupId',
+        'parentId',
+    )
+    
     def __init__(self, visGroupId, parentId, originVMF=None):
         self.visGroupId = visGroupId
         self.parentId = parentId
         super(MoveVisGroup, self).__init__(originVMF)
+        
+    def __copy__(self):
+        return MoveVisGroup(self.visGroupId, self.parentId, self.originVMF)
         
     def __repr__(self):
         return "MoveVisGroup({}, {})".format(
@@ -282,11 +423,24 @@ class MoveVisGroup(VMFDelta):
         
         
 class AddToVisGroup(VMFDelta):
+    __slots__ = (
+        'vmfClass',
+        'id',
+        'visGroupId',
+    )
+    
     def __init__(self, vmfClass, id, visGroupId, originVMF=None):
         self.vmfClass = vmfClass
         self.id = id
         self.visGroupId = visGroupId
         super(AddToVisGroup, self).__init__(originVMF)
+        
+    def __copy__(self):
+        return AddToVisGroup(
+            self.vmfClass, self.id,
+            self.visGroupId,
+            self.originVMF,
+        )
         
     def __repr__(self):
         return "AddToVisGroup({}, {}, {})".format(
@@ -300,11 +454,24 @@ class AddToVisGroup(VMFDelta):
         
         
 class RemoveFromVisGroup(VMFDelta):
+    __slots__ = (
+        'vmfClass',
+        'id',
+        'visGroupId',
+    )
+    
     def __init__(self, vmfClass, id, visGroupId, originVMF=None):
         self.vmfClass = vmfClass
         self.id = id
         self.visGroupId = visGroupId
         super(RemoveFromVisGroup, self).__init__(originVMF)
+        
+    def __copy__(self):
+        return RemoveFromVisGroup(
+            self.vmfClass, self.id,
+            self.visGroupId,
+            self.originVMF,
+        )
         
     def __repr__(self):
         return "RemoveFromVisGroup({}, {}, {})".format(
@@ -318,10 +485,18 @@ class RemoveFromVisGroup(VMFDelta):
         
         
 class HideObject(VMFDelta):
+    __slots__ = (
+        'vmfClass',
+        'id',
+    )
+    
     def __init__(self, vmfClass, id, originVMF=None):
         self.vmfClass = vmfClass
         self.id = id
         super(HideObject, self).__init__(originVMF)
+        
+    def __copy__(self):
+        return HideObject(self.vmfClass, self.id, self.originVMF)
         
     def __repr__(self):
         return "HideObject({}, {})".format(
@@ -334,10 +509,18 @@ class HideObject(VMFDelta):
         
         
 class UnHideObject(VMFDelta):
+    __slots__ = (
+        'vmfClass',
+        'id',
+    )
+    
     def __init__(self, vmfClass, id, originVMF=None):
         self.vmfClass = vmfClass
         self.id = id
         super(UnHideObject, self).__init__(originVMF)
+        
+    def __copy__(self):
+        return UnHideObject(self.vmfClass, self.id, self.originVMF)
         
     def __repr__(self):
         return "UnHideObject({}, {})".format(
