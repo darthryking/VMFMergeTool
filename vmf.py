@@ -707,6 +707,13 @@ class VMF(object):
         for key, value in iter_properties(vmfObject):
             result.append(AddProperty(vmfClass, newId, key, value))
             
+        # Add all of the object's outputs, if it's an entity.
+        if vmfClass == VMF.ENTITY:
+            for outputName, outputValue, outputId in iter_outputs(vmfObject):
+                result.append(
+                    AddOutput(newId, outputName, outputValue, outputId)
+                )
+                
         # Add all sub-objects.
         for subObjectInfo in self.iter_sub_object_infos(vmfClass, id):
             subObjectClass, subObjectId = subObjectInfo
