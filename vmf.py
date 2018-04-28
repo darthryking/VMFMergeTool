@@ -1104,10 +1104,10 @@ def compare_vmfs(parent, child):
                     deltas.append(newDelta)
                     
     # Set to keep track of all the ObjectChanged deltas we've added.
-    objectChangedDeltaSet = set()
+    changeObjectDeltaSet = set()
     
-    def add_object_changed_deltas(vmfClass, id):
-        ''' Add the ObjectChanged VMFDelta to the delta list for the 
+    def add_change_object_deltas(vmfClass, id):
+        ''' Add the ChangeObject VMFDelta to the delta list for the 
         given object and all of its parents, if we haven't already done 
         so.
         
@@ -1124,10 +1124,10 @@ def compare_vmfs(parent, child):
             
             newDelta = ChangeObject(vmfClass, id)
             
-            if newDelta in objectChangedDeltaSet:
+            if newDelta in changeObjectDeltaSet:
                 break
                 
-            objectChangedDeltaSet.add(newDelta)
+            changeObjectDeltaSet.add(newDelta)
             deltas.append(newDelta)
             
             parentInfo = parent.get_object_parent_info(vmfClass, id)
@@ -1203,7 +1203,7 @@ def compare_vmfs(parent, child):
                 continue
                 
             if not object_has_property(parentObject, key):
-                add_object_changed_deltas(vmfClass, id)
+                add_change_object_deltas(vmfClass, id)
                 
                 if key == VMF.GROUP_PROPERTY_PATH:
                     # The group ID needs to be updated with the correct group 
@@ -1238,14 +1238,14 @@ def compare_vmfs(parent, child):
                 childPropertyValue = get_object_property(childObject, key)
             except KeyError:
                 # Property was deleted.
-                add_object_changed_deltas(vmfClass, id)
+                add_change_object_deltas(vmfClass, id)
                 newDelta = RemoveProperty(vmfClass, id, key)
                 deltas.append(newDelta)
                 continue
                 
             if childPropertyValue != value:
                 # Property was changed.
-                add_object_changed_deltas(vmfClass, id)
+                add_change_object_deltas(vmfClass, id)
                 
                 if key == VMF.GROUP_PROPERTY_PATH:
                     # The group ID needs to be updated with the correct group 
@@ -1280,7 +1280,7 @@ def compare_vmfs(parent, child):
             
             # Check for new entity outputs.
             for outputInfo in newOutputSet:
-                add_object_changed_deltas(vmfClass, id)
+                add_change_object_deltas(vmfClass, id)
                 
                 output, value, outputId = outputInfo
                 newDelta = AddOutput(id, output, value, outputId)
@@ -1288,7 +1288,7 @@ def compare_vmfs(parent, child):
                 
             # Check for deleted entity outputs.
             for outputInfo in deletedOutputSet:
-                add_object_changed_deltas(vmfClass, id)
+                add_change_object_deltas(vmfClass, id)
                 
                 output, value, outputId = outputInfo
                 newDelta = RemoveOutput(id, output, value, outputId)
