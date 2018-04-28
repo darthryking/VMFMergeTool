@@ -12,8 +12,8 @@ class TestVisGroups(unittest.TestCase):
         VMF = vmf.VMF
         
     def test_add_visgroup(self):
-        parentVmf = VMF.from_path('test.vmf')
-        childVmf = VMF.from_path('test_add_visgroup.vmf')
+        parentVmf = VMF.from_path('tests/test.vmf')
+        childVmf = VMF.from_path('tests/test_add_visgroup.vmf')
         
         deltas = vmf.compare_vmfs(parentVmf, childVmf)
         
