@@ -1140,10 +1140,24 @@ def compare_vmfs(parent, child):
             if parentClass == VMF.ENTITY:
                 assert vmfClass == VMF.SOLID
                 
-                if id not in child.entityIdForSolidId:
-                    # This solid was untied.
-                    # Don't add a ChangeObject delta for the solid's entity.
-                    break
+                # Don't add a ChangeObject delta for a solid's tied entity, 
+                # because that ends up causing a lot of false positives when
+                # checking for conflicts, especially with regards to 
+                # untied and retied solids.
+                break
+                
+                # It should be safe to not have a ChangeObject delta in this 
+                # situation, because there should already be an available
+                # ChangeObject delta for the corresponding solid if we 
+                # actually need to determine conflicts with RemoveObject 
+                # deltas where the solid was changed and the entire entity was 
+                # removed, including the solid.
+                
+                # if (id not in child.entityIdForSolidId
+                        # or child.entityIdForSolidId[id] != parentId):
+                    # # This solid was untied or retied.
+                    # # Don't add a ChangeObject delta for the solid's entity.
+                    # break
                     
             objectInfo = parentInfo
             
@@ -1319,7 +1333,8 @@ def compare_vmfs(parent, child):
             
     # Check for untied solids.
     for solidId, entityId in parent.entityIdForSolidId.iteritems():
-        if solidId not in child.entityIdForSolidId:
+        if (solidId not in child.entityIdForSolidId
+                and child.has_object(VMF.SOLID, solidId)):
             newDelta = UntieSolid(solidId)
             deltas.append(newDelta)
             

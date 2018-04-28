@@ -482,6 +482,23 @@ def merge_delta_lists(deltaLists, aggressive=False):
                                 )
                                 
                 cascade_removal_conflict(other)
+                
+                # If the parent object was removed, also mark that delta as 
+                # conflicted if we haven't already.
+                parentClass, parentId = delta.originVMF.get_object_parent_info(
+                    delta.vmfClass, delta.id
+                )
+                
+                try:
+                    parentRemovalDelta = mergedDeltasDict[
+                        RemoveObject(parentClass, parentId)
+                    ]
+                except KeyError:
+                    # The parent wasn't removed.
+                    pass
+                else:
+                    add_conflicted_delta(parentRemovalDelta)
+                    
                 return
                 
         elif isinstance(delta, AddProperty):
@@ -784,6 +801,23 @@ def create_conflict_resolution_deltas(parent, conflictedDeltas):
             parentClass, parentId = parent.get_object_parent_info(
                 affectedObjectClass, affectedObjectId
             )
+            
+            assert parentClass == VMF.SOLID
+            
+            affectedObjectClass = parentClass
+            affectedObjectId = parentId
+            
+        if (affectedObjectClass == VMF.SOLID
+                and affectedObjectId in parent.entityIdForSolidId):
+            # If the affected object is a solid that has been tied to an 
+            # Entity, the affected object should actually be the Entity, not 
+            # the Solid.
+            parentClass, parentId = parent.get_object_parent_info(
+                affectedObjectClass, affectedObjectId
+            )
+            
+            assert parentClass == VMF.ENTITY
+            
             affectedObjectClass = parentClass
             affectedObjectId = parentId
             
