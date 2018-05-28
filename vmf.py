@@ -18,7 +18,7 @@ from vmfdelta import (
     AddProperty, RemoveProperty, ChangeProperty, 
     TieSolid, UntieSolid,
     AddOutput, RemoveOutput,
-    MoveVisGroup,
+    ReparentObject,
     AddToVisGroup, RemoveFromVisGroup,
     HideObject, UnHideObject,
 )
@@ -126,6 +126,10 @@ class VMF(object):
         #
         self.parentInfoForObject = {}
         
+        def check_valid_vmf(condition, message="Invalid VMF!"):
+            if not condition:
+                raise InvalidVMF(self.path, message)
+                
         def update_last_id(vmfClass, id):
             if vmfClass in VMF.CLASSES:
                 try:
@@ -149,11 +153,18 @@ class VMF(object):
             
             for solid in solids:
                 solidId = get_id(solid)
+                
+                check_valid_vmf(
+                    solidId not in self.solidsById,
+                    "Duplicate solid ID ({})!".format(solidId),
+                )
                 self.solidsById[solidId] = solid
                 
                 if vmfClass == VMF.ENTITY:
+                    assert solidId not in self.entityIdForSolidId
                     self.entityIdForSolidId[solidId] = get_id(vmfObject)
                     
+                assert (VMF.SOLID, solidId) not in self.parentInfoForObject
                 self.parentInfoForObject[(VMF.SOLID, solidId)] = (
                     vmfClass,
                     get_id(vmfObject),
@@ -166,8 +177,14 @@ class VMF(object):
                 
                 for side in solid[VMF.SIDE]:
                     sideId = get_id(side)
+                    
+                    check_valid_vmf(
+                        sideId not in self.sidesById,
+                        "Duplicate side ID ({})!".format(sideId),
+                    )
                     self.sidesById[sideId] = side
                     
+                    assert (VMF.SIDE, sideId) not in self.parentInfoForObject
                     self.parentInfoForObject[(VMF.SIDE, sideId)] = (
                         VMF.SOLID,
                         solidId,
@@ -217,6 +234,8 @@ class VMF(object):
         for vmfClass, value in vmfData.iteritems():
             if vmfClass == VMF.WORLD:
                 assert isinstance(value, dict)
+                
+                assert self.world is None
                 self.world = value
                 
                 worldId = get_id(value)
@@ -234,8 +253,14 @@ class VMF(object):
                     
                 for group in groups:
                     groupId = get_id(group)
+                    
+                    check_valid_vmf(
+                        groupId not in self.groupsById,
+                        "Duplicate group ID ({})!".format(groupId)
+                    )
                     self.groupsById[groupId] = group
                     
+                    assert (VMF.GROUP, groupId) not in self.parentInfoForObject
                     self.parentInfoForObject[(VMF.GROUP, groupId)] = (
                         vmfClass,
                         worldId,
@@ -251,6 +276,11 @@ class VMF(object):
                 
                 for entity in value:
                     id = get_id(entity)
+                    
+                    check_valid_vmf(
+                        id not in self.entitiesById,
+                        "Duplicate entity ID ({})!".format(id),
+                    )
                     self.entitiesById[id] = entity
                     
                     update_last_id(VMF.ENTITY, id)
@@ -268,9 +298,15 @@ class VMF(object):
         else:
             for parent, visGroup in iter_visgroups(visGroupsObject):
                 id = get_visgroup_id(visGroup)
+                
+                check_valid_vmf(
+                    id not in self.visGroupsById,
+                    "Duplicate visgroup ID ({})!".format(id),
+                )
                 self.visGroupsById[id] = visGroup
                 
                 if parent is not None:
+                    assert (VMF.VISGROUP, id) not in self.parentInfoForObject
                     self.parentInfoForObject[(VMF.VISGROUP, id)] = (
                         VMF.VISGROUP,
                         get_visgroup_id(parent),
@@ -630,19 +666,14 @@ class VMF(object):
                     (VMF.WORLD, get_id(self.world)),
                 )
                 
-            elif isinstance(delta, MoveVisGroup):
-                self.remove_object_from_data(VMF.VISGROUP, delta.visGroupId)
+            elif isinstance(delta, ReparentObject):
+                self.remove_object_from_data(delta.vmfClass, delta.id)
                 
-                parentId = delta.parentId
-                
-                if parentId is None:
-                    newParentInfo = None
-                else:
-                    newParentInfo = (VMF.VISGROUP, parentId)
+                newParentInfo = delta.parent
                 
                 self.add_object_to_data(
-                    VMF.VISGROUP,
-                    delta.visGroupId,
+                    delta.vmfClass,
+                    delta.id,
                     newParentInfo,
                 )
                 
@@ -1153,12 +1184,6 @@ def compare_vmfs(parent, child):
                 # deltas where the solid was changed and the entire entity was 
                 # removed, including the solid.
                 
-                # if (id not in child.entityIdForSolidId
-                        # or child.entityIdForSolidId[id] != parentId):
-                    # # This solid was untied or retied.
-                    # # Don't add a ChangeObject delta for the solid's entity.
-                    # break
-                    
             objectInfo = parentInfo
             
     # Check for changed/deleted objects.
@@ -1182,20 +1207,29 @@ def compare_vmfs(parent, child):
             deltas.append(newDelta)
             continue    # Doing this saves an extra indentation level.
             
-        # If this object is a VisGroup, was it reparented?
-        if vmfClass == VMF.VISGROUP:
+        # If this object isn't a Solid, was this object reparented?
+        # (Solids have their own TieSolid/UntieSolid deltas)
+        if vmfClass != VMF.SOLID:
             parentParentInfo = parent.get_object_parent_info(vmfClass, id)
             childParentInfo = child.get_object_parent_info(vmfClass, id)
             
             if parentParentInfo != childParentInfo:
-                # This VisGroup was reparented.
-                
-                if childParentInfo is None:
-                    newParentId = None
-                else:
-                    _, newParentId = childParentInfo
+                # This object was reparented.
+                if childParentInfo is not None:
+                    parentClass, parentId = childParentInfo
                     
-                newDelta = MoveVisGroup(id, newParentId)
+                    # Retrieve the new parent's ID as part of the parent VMF.
+                    newParentId = newIdForNewChildObject.get(
+                        childParentInfo,
+                        parentId,
+                    )
+                    
+                    newParentInfo = (parentClass, newParentId)
+                    
+                else:
+                    newParentInfo = None
+                    
+                newDelta = ReparentObject(newParentInfo, vmfClass, id)
                 deltas.append(newDelta)
                 
         # All other objects need to get their VisGroup deltas figured out.

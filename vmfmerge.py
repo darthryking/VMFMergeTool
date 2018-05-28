@@ -15,7 +15,7 @@ import sys
 from datetime import datetime
 from argparse import ArgumentParser
 
-from vmf import VMF, load_vmfs, get_parent, compare_vmfs
+from vmf import VMF, InvalidVMF, load_vmfs, get_parent, compare_vmfs
 from vmfdelta import (
     DeltaMergeConflict,
     merge_delta_lists, create_conflict_resolution_deltas,
@@ -104,8 +104,14 @@ def main(argv):
     
     # Load all VMFs.
     print "Loading VMFs..."
-    vmfs = load_vmfs(vmfPaths)
-    
+    try:
+        vmfs = load_vmfs(vmfPaths)
+    except InvalidVMF as e:
+        sys.stderr.write(
+            "ERROR: {} is invalid: {}\n".format(e.path, e.message)
+        )
+        return 1
+        
     # Determine the parent VMF.
     if autoParent:
         parent = get_parent(vmfs)

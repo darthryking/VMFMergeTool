@@ -398,28 +398,59 @@ class RemoveOutput(VMFDelta):
         return (self.entityId, self.output, self.value, self.outputId)
         
         
-class MoveVisGroup(VMFDelta):
+class ReparentObject(VMFDelta):
     __slots__ = (
-        'visGroupId',
-        'parentId',
+        'parent',
+        'vmfClass',
+        'id',
     )
     
-    def __init__(self, visGroupId, parentId, originVMF=None):
-        self.visGroupId = visGroupId
-        self.parentId = parentId
-        super(MoveVisGroup, self).__init__(originVMF)
+    def __init__(self, parent, vmfClass, id, originVMF=None):
+        self.parent = parent
+        self.vmfClass = vmfClass
+        self.id = id
+        super(ReparentObject, self).__init__(originVMF)
         
     def __copy__(self):
-        return MoveVisGroup(self.visGroupId, self.parentId, self.originVMF)
+        return ReparentObject(
+            self.parent,
+            self.vmfClass, self.id,
+            self.originVMF,
+        )
         
     def __repr__(self):
-        return "MoveVisGroup({}, {})".format(
-            repr(self.visGroupId),
-            repr(self.parentId),
+        return "ReparentObject({}, {}, {})".format(
+            repr(self.parent),
+            repr(self.vmfClass),
+            repr(self.id),
         )
         
     def _equiv_attrs(self):
-        return (self.visGroupId,)
+        return (self.vmfClass, self.id)
+        
+        
+# class MoveVisGroup(VMFDelta):
+    # __slots__ = (
+        # 'visGroupId',
+        # 'parentId',
+    # )
+    
+    # def __init__(self, visGroupId, parentId, originVMF=None):
+        # self.visGroupId = visGroupId
+        # self.parentId = parentId
+        # super(MoveVisGroup, self).__init__(originVMF)
+        
+    # def __copy__(self):
+        # return MoveVisGroup(self.visGroupId, self.parentId, self.originVMF)
+        
+    # def __repr__(self):
+        # return "MoveVisGroup({}, {})".format(
+            # repr(self.visGroupId),
+            # repr(self.parentId),
+        # )
+        
+    # def _equiv_attrs(self):
+        # return (self.visGroupId,)
         
         
 class AddToVisGroup(VMFDelta):
@@ -559,7 +590,7 @@ def merge_delta_lists(deltaLists, aggressive=False):
         ChangeProperty,
         AddOutput,
         RemoveOutput,
-        MoveVisGroup,
+        ReparentObject,
         AddToVisGroup,
         RemoveFromVisGroup,
         # HideObject,
@@ -812,11 +843,11 @@ def merge_delta_lists(deltaLists, aggressive=False):
                     
                 return
                 
-        elif isinstance(delta, MoveVisGroup):
-            # Check to see if the VisGroup was removed.
-            removeVisGroupDelta = RemoveObject(VMF.VISGROUP, delta.visGroupId)
-            if removeVisGroupDelta in mergedDeltasDict:
-                # The relevant VisGroup was removed; there's no need to add 
+        elif isinstance(delta, ReparentObject):
+            # Check to see if the object was removed.
+            removeObjectDelta = RemoveObject(delta.vmfClass, delta.id)
+            if removeObjectDelta in mergedDeltasDict:
+                # The relevant object was removed; there's no need to add 
                 # this delta.
                 return
                 
