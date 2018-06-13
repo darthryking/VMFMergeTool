@@ -1232,18 +1232,15 @@ def compare_vmfs(parent, child):
                 newDelta = ReparentObject(newParentInfo, vmfClass, id)
                 deltas.append(newDelta)
                 
-        # All other objects need to get their VisGroup deltas figured out.
-        else:
-            # Get the parent and child objects' VisGroups
-            parentVisGroupIds = get_object_visgroups(parentObject)
-            childVisGroupIds = get_object_visgroups(childObject)
-            
-            # Update the object's VisGroups.
-            add_visgroup_deltas(
-                vmfClass, id,
-                parentVisGroupIds, childVisGroupIds
-            )
-            
+        # Figure out VisGroup deltas.
+        parentVisGroupIds = get_object_visgroups(parentObject)
+        childVisGroupIds = get_object_visgroups(childObject)
+        
+        add_visgroup_deltas(
+            vmfClass, id,
+            parentVisGroupIds, childVisGroupIds
+        )
+        
         # Check for new properties.
         for key, value in iter_properties(childObject):
             if key == VMF.VISGROUP_PROPERTY_PATH:
