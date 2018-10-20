@@ -1344,13 +1344,21 @@ def compare_vmfs(parent, child):
         if solidId not in parent.entityIdForSolidId:
             # Only tie the solid if we don't already have an AddObject delta
             # that adds it as the child of an Entity object.
-            if (VMF.SOLID, solidId) not in newIdForNewChildObject:
-                # Retrieve the new Entity's ID as part of the parent.
-                newId = newIdForNewChildObject[(VMF.ENTITY, entityId)]
+            if (VMF.SOLID, solidId) in newIdForNewChildObject:
+                continue
                 
-                newDelta = TieSolid(solidId, newId)
-                deltas.append(newDelta)
+            # Retrieve the new Entity's ID as part of the parent.
+            try:
+                newEntityId = newIdForNewChildObject[(VMF.ENTITY, entityId)]
+            except KeyError:
+                # This Entity actually already exists in the parent.
+                # Just reuse the parent's Entity ID.
+                assert parent.has_object(VMF.ENTITY, entityId)
+                newEntityId = entityId
                 
+            newDelta = TieSolid(solidId, newEntityId)
+            deltas.append(newDelta)
+            
         elif parent.entityIdForSolidId[solidId] != entityId:
             # This solid was untied and retied to a different entity.
             # Create an UntieSolid and a TieSolid delta to simulate this.
