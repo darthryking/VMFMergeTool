@@ -681,38 +681,42 @@ def merge_delta_lists(deltaLists, aggressive=False):
                     
                     if cascadedRemovals is not None:
                         for childClass, childId in cascadedRemovals:
-                            childRemovalDelta = RemoveObject(
-                                childClass, childId
-                            )
-                            if childRemovalDelta in mergedDeltasDict:
-                                actualChildRemovalDelta = mergedDeltasDict[
-                                    childRemovalDelta
+                            try:
+                                childRemovalDelta = mergedDeltasDict[
+                                    RemoveObject(childClass, childId)
                                 ]
-                                
-                                add_conflicted_delta(actualChildRemovalDelta)
-                                
-                                cascade_removal_conflict(
-                                    actualChildRemovalDelta
+                            except KeyError:
+                                # The child's removal delta has already been
+                                # marked as conflicted.
+                                assert (
+                                    RemoveObject(childClass, childId)
+                                    in conflictedDeltasDict
                                 )
+                            else:
+                                add_conflicted_delta(childRemovalDelta)
+                                cascade_removal_conflict(childRemovalDelta)
                                 
                 cascade_removal_conflict(other)
                 
-                # If the parent object was removed, also mark that delta as 
-                # conflicted if we haven't already.
-                parentClass, parentId = delta.originVMF.get_object_parent_info(
+                parentInfo = delta.originVMF.get_object_parent_info(
                     delta.vmfClass, delta.id
                 )
                 
-                try:
-                    parentRemovalDelta = mergedDeltasDict[
-                        RemoveObject(parentClass, parentId)
-                    ]
-                except KeyError:
-                    # The parent wasn't removed.
-                    pass
-                else:
-                    add_conflicted_delta(parentRemovalDelta)
+                if parentInfo is not None:
+                    # If the parent object was removed, also mark that delta
+                    # as conflicted if we haven't already.
+                    parentClass, parentId = parentInfo
                     
+                    try:
+                        parentRemovalDelta = mergedDeltasDict[
+                            RemoveObject(parentClass, parentId)
+                        ]
+                    except KeyError:
+                        # The parent wasn't removed.
+                        pass
+                    else:
+                        add_conflicted_delta(parentRemovalDelta)
+                        
                 return
                 
         elif isinstance(delta, AddProperty):
