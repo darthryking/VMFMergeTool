@@ -3,17 +3,18 @@
 vmfmerge.py
 By DKY
 
-Version 0.0.0e DEV
+Version 0.0.0f DEV
 
 VMF Merge Tool
 
 """
 
-__version__ = '0.0.0e DEV'
+__version__ = '0.0.0f DEV'
 
 import sys
 from datetime import datetime
 from argparse import ArgumentParser
+from collections import OrderedDict
 
 from vmf import VMF, InvalidVMF, load_vmfs, get_parent, compare_vmfs
 from vmfdelta import (
@@ -123,10 +124,10 @@ def main(argv):
     
     # Generate lists of deltas for each child.
     print "Generating delta lists..."
-    deltaListForChild = {
-        child : compare_vmfs(parent, child)
+    deltaListForChild = OrderedDict(
+        (child, compare_vmfs(parent, child))
         for child in children
-    }
+    )
     
     if dumpIndividual:
         for child, deltas in deltaListForChild.iteritems():

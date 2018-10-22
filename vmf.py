@@ -1356,6 +1356,9 @@ def compare_vmfs(parent, child):
                 assert parent.has_object(VMF.ENTITY, entityId)
                 newEntityId = entityId
                 
+            add_change_object_deltas(VMF.SOLID, solidId)
+            add_change_object_deltas(VMF.ENTITY, newEntityId)
+            
             newDelta = TieSolid(solidId, newEntityId)
             deltas.append(newDelta)
             
@@ -1366,6 +1369,9 @@ def compare_vmfs(parent, child):
                 (VMF.ENTITY, entityId),
                 entityId,
             )
+            
+            add_change_object_deltas(VMF.SOLID, solidId)
+            add_change_object_deltas(VMF.ENTITY, newId)
             
             deltas.append(UntieSolid(solidId))
             deltas.append(TieSolid(solidId, newId))
