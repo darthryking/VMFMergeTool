@@ -161,7 +161,7 @@ def _tokenize_vdf(inData, escape=True):
         
         i = 0
         while i < sLen:
-            for seq, char in escapeDict.iteritems():
+            for seq, char in escapeDict.items():
                 seqLen = len(seq)
                 if s[i:i + seqLen] == seq:
                     result.append(char)
@@ -381,7 +381,7 @@ def format_vdf(data, escape=True, _depth=0):
         '''
         
         # The usual case.
-        if isinstance(value, basestring):
+        if isinstance(value, str):
             return (
                 INDENT,
                 '"{}"'.format(escape(key)),
@@ -408,7 +408,7 @@ def format_vdf(data, escape=True, _depth=0):
     
     outData = []
     
-    for key, value in data.iteritems():
+    for key, value in data.items():
         key = str(key)
         
         try:

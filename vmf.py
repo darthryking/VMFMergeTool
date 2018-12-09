@@ -142,7 +142,7 @@ class VMF(object):
                         
         def add_solids_from_object(vmfClass, vmfObject):
             if (VMF.SOLID not in vmfObject
-                    or isinstance(vmfObject[VMF.SOLID], basestring)):
+                    or isinstance(vmfObject[VMF.SOLID], str)):
                 return
                 
             solids = vmfObject[VMF.SOLID]
@@ -231,7 +231,7 @@ class VMF(object):
                     assert all(isinstance(x, dict) for _, x in visGroupQ)
                     
         # Add normal VMF objects, e.g. world and entity objects.
-        for vmfClass, value in vmfData.iteritems():
+        for vmfClass, value in vmfData.items():
             if vmfClass == VMF.WORLD:
                 assert isinstance(value, dict)
                 
@@ -376,19 +376,19 @@ class VMF(object):
         }[vmfClass]
         
     def iter_solids(self):
-        return self.solidsById.itervalues()
+        return self.solidsById.values()
         
     def iter_sides(self):
-        return self.sidesById.itervalues()
+        return self.sidesById.values()
         
     def iter_groups(self):
-        return self.groupsById.itervalues()
+        return self.groupsById.values()
         
     def iter_entities(self):
-        return self.entitiesById.itervalues()
+        return self.entitiesById.values()
         
     def iter_visgroups(self):
-        return self.visGroupsById.itervalues()
+        return self.visGroupsById.values()
         
     def iter_objects(self):
         ''' Returns an iterator over all the relevant VMF objects in the VMF.
@@ -452,7 +452,7 @@ class VMF(object):
                 # This is probably a point entity that happens to have a 
                 # "solid" property...
                 assert vmfClass == VMF.ENTITY
-                assert isinstance(subObjects, basestring)
+                assert isinstance(subObjects, str)
                 return
                 
         for subObject in subObjects:
@@ -800,7 +800,7 @@ def remove_object_entry(vmfObject, key, value):
         # The entry is the last entry. Remove it.
         assert (
             isinstance(objectEntry, dict)
-            or isinstance(objectEntry, basestring)
+            or isinstance(objectEntry, str)
         )
         del vmfObject[key]
     else:
@@ -942,13 +942,13 @@ def iter_properties(vmfObject):
         'connections',
     ) + VMF.CLASSES
     
-    for key, value in vmfObject.iteritems():
+    for key, value in vmfObject.items():
         # Note that we deal with the 'solid' key a bit specially, since it is 
         # actually a valid property key in non-brush entity objects.
         if (key not in IGNORED_KEYS
-                or key == VMF.SOLID and isinstance(value, basestring)):
+                or key == VMF.SOLID and isinstance(value, str)):
                 
-            if isinstance(value, basestring) or isinstance(value, list):
+            if isinstance(value, str) or isinstance(value, list):
                 yield (key, value)
                 
             elif isinstance(value, dict):
@@ -977,8 +977,8 @@ def iter_outputs(entity):
     # Maps (output, value) pairs to an integer count.
     countForOutputValue = {}
     
-    for output, values in connections.iteritems():
-        if isinstance(values, basestring):
+    for output, values in connections.items():
+        if isinstance(values, str):
             values = [values]
             
         assert isinstance(values, list)
@@ -1340,7 +1340,7 @@ def compare_vmfs(parent, child):
                 deltas.append(newDelta)
                 
     # Check for newly-tied solids.
-    for solidId, entityId in child.entityIdForSolidId.iteritems():
+    for solidId, entityId in child.entityIdForSolidId.items():
         if solidId not in parent.entityIdForSolidId:
             # Only tie the solid if we don't already have an AddObject delta
             # that adds it as the child of an Entity object.
@@ -1377,7 +1377,7 @@ def compare_vmfs(parent, child):
             deltas.append(TieSolid(solidId, newId))
             
     # Check for untied solids.
-    for solidId, entityId in parent.entityIdForSolidId.iteritems():
+    for solidId, entityId in parent.entityIdForSolidId.items():
         if (solidId not in child.entityIdForSolidId
                 and child.has_object(VMF.SOLID, solidId)):
             newDelta = UntieSolid(solidId)
@@ -1441,10 +1441,12 @@ def load_vmfs(vmfPaths, output=True):
     vmfs = []
     for i, path in enumerate(vmfPaths):
         if output:
-            print "\t* ({}/{}) Loading {}...".format(
-                i + 1,
-                len(vmfPaths),
-                path,
+            print("\t* ({}/{}) Loading {}..."
+                .format(
+                    i + 1,
+                    len(vmfPaths),
+                    path,
+                )
             )
             
         vmfs.append(VMF.from_path(path))
