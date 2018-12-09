@@ -33,12 +33,6 @@ class VMFDelta(object):
     __slots__ = (
         'originVMF',
         '_type',
-        '__copy__',
-        '_equiv_attrs',
-        '__eq__',
-        '__hash__',
-        '__repr__',
-        'get_origin_filename',
     )
     
     def __init__(self, originVMF=None):
@@ -676,8 +670,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
                     "CONFLICT WARNING: ChangeObject delta conflicts with "
                     "RemoveObject delta!"
                 )
-                print "\tFrom {}:".format(delta.get_origin_filename()), delta
-                print "\tFrom {}:".format(other.get_origin_filename()), other
+                print("\tFrom {}:".format(delta.get_origin_filename()), delta)
+                print("\tFrom {}:".format(other.get_origin_filename()), other)
                 
                 add_conflicted_delta(delta)
                 add_conflicted_delta(other)
@@ -758,8 +752,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
                 print (
                     "CONFLICT WARNING: AddProperty conflict detected!"
                 )
-                print "\tFrom {}:".format(delta.get_origin_filename()), delta
-                print "\tFrom {}:".format(other.get_origin_filename()), other
+                print("\tFrom {}:".format(delta.get_origin_filename()), delta)
+                print("\tFrom {}:".format(other.get_origin_filename()), other)
                 
                 add_conflicted_delta(delta)
                 add_conflicted_delta(other)
@@ -798,8 +792,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
                     "CONFLICT WARNING: ChangeProperty delta conflicts "
                     "with RemoveProperty delta!"
                 )
-                print "\tFrom {}:".format(delta.get_origin_filename()), delta
-                print "\tFrom {}:".format(other.get_origin_filename()), other
+                print("\tFrom {}:".format(delta.get_origin_filename()), delta)
+                print("\tFrom {}:".format(other.get_origin_filename()), other)
                 
                 add_conflicted_delta(delta)
                 add_conflicted_delta(other)
@@ -816,8 +810,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
                     "CONFLICT WARNING: ChangeProperty conflict "
                     "detected!"
                 )
-                print "\tFrom {}:".format(delta.get_origin_filename()), delta
-                print "\tFrom {}:".format(other.get_origin_filename()), other
+                print("\tFrom {}:".format(delta.get_origin_filename()), delta)
+                print("\tFrom {}:".format(other.get_origin_filename()), other)
                 
                 add_conflicted_delta(delta)
                 add_conflicted_delta(other)
@@ -846,8 +840,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
                 print (
                     "CONFLICT WARNING: TieSolid conflict detected!"
                 )
-                print "\tFrom {}:".format(delta.get_origin_filename()), delta
-                print "\tFrom {}:".format(other.get_origin_filename()), other
+                print("\tFrom {}:".format(delta.get_origin_filename()), delta)
+                print("\tFrom {}:".format(other.get_origin_filename()), other)
                 
                 add_conflicted_tiesolid_delta(delta)
                 return
@@ -862,8 +856,8 @@ def merge_delta_lists(deltaLists, aggressive=False):
                 print (
                     "CONFLICT WARNING: TieSolid conflict detected!"
                 )
-                print "\tFrom {}:".format(delta.get_origin_filename()), delta
-                print "\tFrom {}:".format(other.get_origin_filename()), other
+                print("\tFrom {}:".format(delta.get_origin_filename()), delta)
+                print("\tFrom {}:".format(other.get_origin_filename()), other)
                 
                 add_conflicted_tiesolid_delta(delta)
                 add_conflicted_tiesolid_delta(other)
@@ -921,12 +915,12 @@ def merge_delta_lists(deltaLists, aggressive=False):
     deltasForDeltaType[RemoveObject].reverse()
     
     # Merge!
-    for deltas in deltasForDeltaType.itervalues():
+    for deltas in deltasForDeltaType.values():
         for delta in deltas:
             merge(delta)
             
     # The result is simply the list of keys in the mergedDeltasDict.
-    mergedDeltas = mergedDeltasDict.keys()
+    mergedDeltas = list(mergedDeltasDict.keys())
     
     if conflictedDeltasDict:
         # Uh oh, there were conflicts!
@@ -934,7 +928,7 @@ def merge_delta_lists(deltaLists, aggressive=False):
         # Flatten the conflicts dictionary.
         conflictedDeltas = [
             delta
-            for deltas in conflictedDeltasDict.itervalues()
+            for deltas in conflictedDeltasDict.values()
                 for delta in deltas
         ]
         

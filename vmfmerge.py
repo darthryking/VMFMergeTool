@@ -104,7 +104,7 @@ def main(argv):
     startTime = datetime.now()
     
     # Load all VMFs.
-    print "Loading VMFs..."
+    print("Loading VMFs...")
     try:
         vmfs = load_vmfs(vmfPaths)
     except InvalidVMF as e:
@@ -123,43 +123,43 @@ def main(argv):
     children = [vmf for vmf in vmfs if vmf is not parent]
     
     # Generate lists of deltas for each child.
-    print "Generating delta lists..."
+    print("Generating delta lists...")
     deltaListForChild = OrderedDict(
         (child, compare_vmfs(parent, child))
         for child in children
     )
     
     if dumpIndividual:
-        for child, deltas in deltaListForChild.iteritems():
-            print "Deltas for {}:".format(child.path)
-            print '\n'.join(repr(delta) for delta in deltas)
-            print ""
+        for child, deltas in deltaListForChild.items():
+            print("Deltas for {}:".format(child.path))
+            print('\n'.join(repr(delta) for delta in deltas))
+            print("")
             
         return 0
         
     # Fix up all deltas so that they have references to their origin VMF.
-    for child, deltas in deltaListForChild.iteritems():
+    for child, deltas in deltaListForChild.items():
         for delta in deltas:
             delta.originVMF = child
             
     # Merge the delta lists into a single list of deltas, to be applied on top 
     # of the parent.
-    print "Merging deltas..."
+    print("Merging deltas...")
     
-    deltaLists = deltaListForChild.values()
+    deltaLists = list(deltaListForChild.values())
     
     try:
         mergedDeltas = merge_delta_lists(deltaLists, aggressive=aggressive)
     except DeltaMergeConflict as e:
-        print str(e)
+        print(str(e))
         mergedDeltas = e.partialDeltas
         
-        print ""
-        print "Conflicted deltas:"
+        print("")
+        print("Conflicted deltas:")
         for delta in e.conflictedDeltas:
-            print "From {}:".format(delta.get_origin_filename()), repr(delta)
+            print("From {}:".format(delta.get_origin_filename()), repr(delta))
             
-        print ""
+        print("")
         
         conflictResolutionDeltas = create_conflict_resolution_deltas(
             parent, e.conflictedDeltas
@@ -173,20 +173,20 @@ def main(argv):
         mergedDeltas += conflictResolutionDeltas
         
     if dumpProposed:
-        print "Merged deltas:"
-        print '\n'.join(repr(delta) for delta in mergedDeltas)
+        print("Merged deltas:")
+        print('\n'.join(repr(delta) for delta in mergedDeltas))
         return 0
         
     # Apply the merged deltas to the parent.
-    print "Applying deltas..."
+    print("Applying deltas...")
     parent.apply_deltas(mergedDeltas)
     
     # Write the mutated parent to the target VMF path.
-    print "Writing merged VMF..."
+    print("Writing merged VMF...")
     parent.write_path('out.vmf')
     
-    print "Done!"
-    print "Total time: {}".format(datetime.now() - startTime)
+    print("Done!")
+    print("Total time: {}".format(datetime.now() - startTime))
     
     return 0
     
