@@ -3,13 +3,13 @@
 vdfutils.py
 By DKY
 
-Version 3.0.1
+Version 4.0.0
 
 Utilities for processing Valve KeyValue data formats.
 
 """
 
-__version__ = '3.0.1'
+__version__ = '4.0.0'
 
 from collections import OrderedDict
 
@@ -371,7 +371,7 @@ def format_vdf(data, escape=True, _depth=0):
         else:
             return s
             
-    def format_item(key, value):
+    def format_item(key, value, isFirst=False):
         ''' Returns a tuple of VDF serialization elements built using the 
         given key and value.
         
@@ -387,16 +387,16 @@ def format_vdf(data, escape=True, _depth=0):
                 '"{}"'.format(escape(key)),
                 SINGLE_INDENT,
                 '"{}"'.format(escape(value)),
-                '\n',
             )
             
         # The nested case.
         elif isinstance(value, dict):
             return (
-                INDENT, '"{}"'.format(key),
+                ('' if isFirst else '\n'),
+                INDENT, '"{}"'.format(escape(key)),
                 '\n', INDENT, '{\n',
                 format_vdf(value, _depth=_depth + 1),   # Recursion is fun!
-                '\n', INDENT, '}\n',
+                '\n', INDENT, '}',
             )
             
         # None of the above.
@@ -408,11 +408,16 @@ def format_vdf(data, escape=True, _depth=0):
     
     outData = []
     
+    isFirst = True
+    
     for key, value in data.items():
         key = str(key)
         
+        if not isFirst:
+            outData.append('\n')
+        
         try:
-            outData += format_item(key, value)
+            outData += format_item(key, value, isFirst=isFirst)
             
         # Value is neither a string nor a dict.
         except TypeError:
@@ -423,13 +428,20 @@ def format_vdf(data, escape=True, _depth=0):
                 
             # If it is not an iterable, convert it to a string and try again.
             except TypeError:
-                outData += format_item(key, str(value))
+                outData += format_item(key, str(value), isFirst=isFirst)
                 
             # The value is indeed an iterable.
             else:
                 for innerValue in valueIterator:
-                    outData += format_item(key, innerValue)
+                    if not isFirst:
+                        outData.append('\n')
+                        
+                    outData += format_item(key, innerValue, isFirst=isFirst)
                     
+                    isFirst = False
+                    
+        isFirst = False
+        
     return ''.join(outData)
     
     
