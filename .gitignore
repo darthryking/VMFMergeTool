@@ -65,3 +65,9 @@ out.vmf
 
 # Maps folder
 /maps/
+
+# Virtualenvs
+/venv*
+
+# Python 2 backups
+*.bak
