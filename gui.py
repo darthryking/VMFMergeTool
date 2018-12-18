@@ -615,7 +615,7 @@ class MergeWindow(BaseWindow):
                 
             else:
                 self.lbl_progress.setText(
-                    "{}... (Step {}/{})".format(
+                    "{} (Step {}/{})".format(
                         message,
                         progress + 1, maxProgress,
                     )

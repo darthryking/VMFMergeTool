@@ -123,11 +123,15 @@ def do_merge(
     """
     
     class ProgressTracker:
-        NUM_MERGE_STEPS = 4
+        NUM_MERGE_STEPS = 3
         
         def __init__(self, children):
             self.progress = 0
-            self.maxProgress = len(children) + self.NUM_MERGE_STEPS
+            self.maxProgress = (
+                int(noParentSideEffects)
+                + len(children)
+                + self.NUM_MERGE_STEPS
+            )
             
         def update(self, message, increment=True):
             print(message)
@@ -143,19 +147,9 @@ def do_merge(
                 
     progressTracker = ProgressTracker(children)
     
-    # Save a backup of the original parent.
-    parentDir = os.path.dirname(parent.path)
-    parentFileName = os.path.basename(parent.path)
-    progressTracker.update("Creating a backup of {}...".format(parentFileName))
-    
-    parentName, ext = os.path.splitext(parentFileName)
-    backupFileName = parentName + '_old' + ext
-    backupFilePath = os.path.join(parentDir, backupFileName)
-    
-    shutil.copy(parent.path, backupFilePath)
-    
     # If we don't want side-effects on the parent VMF, we should deep-copy it.
     if noParentSideEffects:
+        progressTracker.update("Preparing parent VMF for merge...")
         parent = copy.deepcopy(parent)
         
     # Generate lists of deltas for each child.
@@ -230,8 +224,17 @@ def do_merge(
     
     # Write the mutated parent to the target VMF path.
     progressTracker.update("Writing merged VMF...")
-    # parent.write_path(parent.path)
-    parent.write_path('out.vmf')
+    
+    parentPath = parent.path
+    parentDir = os.path.dirname(parentPath)
+    parentFileName = os.path.basename(parentPath)
+    
+    parentName, ext = os.path.splitext(parentFileName)
+    mergedFileName = parentName + '_merged' + ext
+    mergedFilePath = os.path.join(parentDir, mergedFileName)
+    
+    parent.write_path(mergedFilePath)
+    # parent.write_path('out.vmf')
     
     # Done!
     progressTracker.update("Done!", increment=False)
