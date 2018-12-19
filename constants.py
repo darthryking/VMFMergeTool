@@ -22,3 +22,5 @@ else:
     GUI_FILE_DIR = os.path.dirname(os.path.abspath(__file__))
     
     
+ICON_NAME = 'icon.png'
+ICON_PATH = os.path.join(GUI_FILE_DIR, ICON_NAME)

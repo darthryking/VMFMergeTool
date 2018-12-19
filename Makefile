@@ -5,6 +5,7 @@ all: gui cli
 gui:
 	pyinstaller gui.py \
 		--name vmfmerge-gui \
+		--icon icon.ico \
 		--noconsole \
 		--onefile \
 		--hidden-import 'PySide2.QtXml' \
@@ -12,6 +13,7 @@ gui:
 		--upx-exclude msvcp140.dll \
 		--upx-exclude qwindows.dll \
 		--upx-exclude qwindowsvistastyle.dll \
+		--add-data './icon.png:.' \
 		--add-data './vmfmerge.ui:.' \
 		--add-data './loadvmfsdialog.ui:.' \
 		--add-data './mergewindow.ui:.' \
@@ -19,12 +21,14 @@ gui:
 gui-debug:
 	pyinstaller gui.py \
 		--name vmfmerge-gui \
+		--icon icon.ico \
 		--onefile \
 		--hidden-import 'PySide2.QtXml' \
 		--upx-exclude vcruntime140.dll \
 		--upx-exclude msvcp140.dll \
 		--upx-exclude qwindows.dll \
 		--upx-exclude qwindowsvistastyle.dll \
+		--add-data './icon.png:.' \
 		--add-data './vmfmerge.ui:.' \
 		--add-data './loadvmfsdialog.ui:.' \
 		--add-data './mergewindow.ui:.' \
@@ -32,6 +36,7 @@ gui-debug:
 cli:
 	pyinstaller vmfmerge.py \
 		--name vmfmerge-cli \
+		--icon icon.ico \
 		--onefile \
 		--upx-exclude vcruntime140.dll \
 		--upx-exclude msvcp140.dll \

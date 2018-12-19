@@ -16,11 +16,11 @@ from functools import partial
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
-from PySide2 import QtCore, QtUiTools, QtWidgets
+from PySide2 import QtCore, QtGui, QtUiTools, QtWidgets
 
 import vmfmerge
 from vmf import VMF, get_parent
-from constants import GUI_FILE_DIR
+from constants import GUI_FILE_DIR, ICON_PATH
 
 _app = None
 _executor = None
@@ -201,6 +201,8 @@ class BaseWindow(QtCore.QObject):
         self.loader.registerCustomWidget(LoadingDialog)
         
         self.window = self.load_ui(uiFilePath)
+        self.window.setWindowIcon(QtGui.QIcon(ICON_PATH))
+        
         self.window.installEventFilter(self)
         
         self._allowClose = True
