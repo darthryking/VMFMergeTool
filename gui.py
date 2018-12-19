@@ -8,6 +8,7 @@ All the logic required to run VMFMerge in GUI mode.
 
 import os
 import sys
+import traceback
 from io import StringIO
 from queue import Queue
 from threading import RLock
@@ -398,8 +399,17 @@ class MainWindow(BaseWindow):
             if future.done():
                 try:
                     conflictedDeltas = future.result()
+                    
                 except Exception:
+                    self.mergeWindow.update_merge_progress(
+                        "Merge failed with error:\n{}".format(
+                            traceback.format_exc()
+                        ),
+                        shortMessage="Merge failed!",
+                        finished=True,
+                    )
                     raise
+                    
                 else:
                     if conflictedDeltas:
                         conflictedVMFs = [
@@ -512,9 +522,24 @@ class LoadingDialog(BaseWindow):
                 numVMFsToLoad += 1
                 
                 if future.done():
-                    e = future.exception()
-                    if e is not None:
-                        raise e
+                    try:
+                        future.result()
+                    except Exception:
+                        QtWidgets.QMessageBox.warning(
+                            self.window,
+                            "Error Loading VMF",
+                            "Failed to load VMFs.\nError: {}".format(
+                                traceback.format_exc()
+                            ),
+                            buttons=QtWidgets.QMessageBox.Ok,
+                        )
+                        
+                        _loadTaskFutureForPath.clear()
+                        
+                        self.stop_updating()
+                        self.close()
+                        
+                        raise
                         
                     numLoadedVMFs += 1
                     
@@ -602,28 +627,41 @@ class MergeWindow(BaseWindow):
             do_update = self._updateQ.get()
             do_update()
             
-    def update_merge_progress(self, message, progress, maxProgress):
+    def update_merge_progress(
+            self,
+            message,
+            shortMessage=None,
+            progress=None, maxProgress=None,
+            finished=False,
+            ):
+            
+        if shortMessage is None:
+            shortMessage = message
+            
         def do_update():
-            if message == "Done!":
-                self.lbl_progress.setText(message)
-                self.stop_polling_for_updates()
+            if None in (progress, maxProgress) or finished:
+                self.lbl_progress.setText(shortMessage)
                 
+            else:
+                self.lbl_progress.setText(
+                    "{} (Step {}/{})".format(
+                        shortMessage,
+                        progress + 1, maxProgress,
+                    )
+                )
+                
+            if None not in (progress, maxProgress):
+                self.progressBar.setMaximum(maxProgress)
+                self.progressBar.setValue(progress)
+                
+            if finished:
+                self.stop_polling_for_updates()
+
                 self.allow_close()
                 self.show()
                 
                 self._mainWindowRef.merge_complete()
                 
-            else:
-                self.lbl_progress.setText(
-                    "{} (Step {}/{})".format(
-                        message,
-                        progress + 1, maxProgress,
-                    )
-                )
-                
-            self.progressBar.setMaximum(maxProgress)
-            self.progressBar.setValue(progress)
-            
             self.progressTextBuffer.write(message + '\n')
             
             self.txt_log.setText(self.progressTextBuffer.getvalue())

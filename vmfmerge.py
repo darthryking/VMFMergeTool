@@ -123,6 +123,7 @@ def do_merge(
     """
     
     class ProgressTracker:
+        # Not including the conflict resolution step.
         NUM_MERGE_STEPS = 3
         
         def __init__(self, children):
@@ -133,16 +134,26 @@ def do_merge(
                 + self.NUM_MERGE_STEPS
             )
             
-        def update(self, message, increment=True):
+        def update(
+               self,
+               message,
+               preIncrement=False, postIncrement=True,
+               finished=False,
+               ):
+               
+            if preIncrement:
+                self.progress += 1
+                
             print(message)
             
             update_callback(
                 message,
-                min(self.progress, self.maxProgress),
-                self.maxProgress,
+                progress=min(self.progress, self.maxProgress),
+                maxProgress=self.maxProgress,
+                finished=finished,
             )
             
-            if increment:
+            if postIncrement:
                 self.progress += 1
                 
     progressTracker = ProgressTracker(children)
@@ -197,6 +208,7 @@ def do_merge(
             
         print("")
         
+        progressTracker.maxProgress += 1
         progressTracker.update("Creating Manual Merge VisGroups...")
         
         conflictResolutionDeltas = create_conflict_resolution_deltas(
@@ -225,19 +237,29 @@ def do_merge(
     # Write the mutated parent to the target VMF path.
     progressTracker.update("Writing merged VMF...")
     
-    parentPath = parent.path
-    parentDir = os.path.dirname(parentPath)
-    parentFileName = os.path.basename(parentPath)
-    
-    parentName, ext = os.path.splitext(parentFileName)
-    mergedFileName = parentName + '_merged' + ext
-    mergedFilePath = os.path.join(parentDir, mergedFileName)
-    
-    parent.write_path(mergedFilePath)
+    def get_merged_vmf_path(parentPath):
+        parentDir = os.path.dirname(parentPath)
+        parentFileName = os.path.basename(parentPath)
+        
+        parentName, ext = os.path.splitext(parentFileName)
+        
+        mergedFileName = parentName + '_merged' + ext
+        mergedFilePath = os.path.join(parentDir, mergedFileName)
+        
+        # Make sure the output filename is unique...
+        i = 0
+        while os.path.exists(mergedFilePath):
+            mergedFileName = parentName + '_merged_' + str(i) + ext
+            mergedFilePath = os.path.join(parentDir, mergedFileName)
+            i += 1
+            
+        return mergedFilePath
+        
+    parent.write_path(get_merged_vmf_path(parent.path))
     # parent.write_path('out.vmf')
     
     # Done!
-    progressTracker.update("Done!", increment=False)
+    progressTracker.update("Done!", finished=True)
     
     return conflictedDeltas
     
