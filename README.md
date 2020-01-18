@@ -1,6 +1,6 @@
 # VMFMergeTool
 
-Copyright © 2018 by DKY (Ryan Lam)
+Copyright © 2020 by DKY (Ryan Lam)
 
 **VMF Merge Tool** is an experimental tool for Source Engine level design teams. It allows multiple level designers to concurrently work on a common level without conflicts, by merging each designer's work on top of a common "parent" source file.
 
@@ -16,7 +16,7 @@ VMFMerge merges VMF sources in a process consisting of four stages:
 
 4. Finally, the tool goes through the master delta list and "replays" each delta on top of the parent VMF. The result is a merged VMF consisting of all the changes made in each of the children, applied to the parent.
 
-Current version: ***0.1.0 BETA***
+Current version: ***0.1.1 BETA***
 
 
 ### GUI Usage
