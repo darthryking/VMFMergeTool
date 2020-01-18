@@ -576,6 +576,7 @@ def merge_delta_lists(deltaLists, aggressive=False):
     deltaTypes = (
         AddObject,
         UntieSolid,
+        ReparentObject,
         RemoveObject,
         TieSolid,
         ChangeObject,
@@ -584,7 +585,6 @@ def merge_delta_lists(deltaLists, aggressive=False):
         ChangeProperty,
         AddOutput,
         RemoveOutput,
-        ReparentObject,
         AddToVisGroup,
         RemoveFromVisGroup,
         # HideObject,
@@ -698,10 +698,13 @@ def merge_delta_lists(deltaLists, aggressive=False):
                                 ]
                             except KeyError:
                                 # The child's removal delta has already been
-                                # marked as conflicted.
+                                # marked as conflicted, or the child was
+                                # reparented.
                                 assert (
                                     RemoveObject(childClass, childId)
-                                    in conflictedDeltasDict
+                                        in conflictedDeltasDict
+                                    or ReparentObject(None, childClass, childId)
+                                        in mergedDeltasDict
                                 )
                             else:
                                 add_conflicted_delta(childRemovalDelta)
@@ -932,6 +935,18 @@ def merge_delta_lists(deltaLists, aggressive=False):
                 for delta in deltas
         ]
         
+        # Deduplicate the conflicting deltas by identity, since there's a fair
+        # chance that a number of them were added multiple times.
+        uniqueConflictedDeltas = []
+        conflictedDeltaIds = set()
+        for conflictedDelta in conflictedDeltas:
+            conflictedDeltaId = id(conflictedDelta)
+            if conflictedDeltaId not in conflictedDeltaIds:
+                uniqueConflictedDeltas.append(conflictedDelta)
+                conflictedDeltaIds.add(conflictedDeltaId)
+                
+        conflictedDeltas = uniqueConflictedDeltas
+        
         conflictedDeltas.sort(key=lambda delta: deltaTypes.index(type(delta)))
         
         raise DeltaMergeConflict(mergedDeltas, conflictedDeltas)
@@ -940,7 +955,7 @@ def merge_delta_lists(deltaLists, aggressive=False):
         return mergedDeltas
         
         
-def create_conflict_resolution_deltas(parent, conflictedDeltas):
+def create_conflict_resolution_deltas(parent, conflictedDeltas, verbose=False):
     """ Takes a parent VMF and a list of conflicted deltas for that VMF, and 
     returns new deltas that, when applied to the parent, will create new 
     VisGroups that can be used for in-Hammer conflict resolution.
@@ -970,6 +985,9 @@ def create_conflict_resolution_deltas(parent, conflictedDeltas):
         )
     )
     
+    if verbose:
+        print(f"Create root conflict resolution VisGroup: {result[-3:]}")
+    
     def create_conflict_visgroup(visGroupName):
         ''' Adds deltas to `result` that create a new conflict resolution 
         VisGroup with the given name under the root conflict VisGroup, and
@@ -997,6 +1015,12 @@ def create_conflict_resolution_deltas(parent, conflictedDeltas):
                 'color', '255 0 0',
             )
         )
+        
+        if verbose:
+            print(
+                f"Create conflict resolution VisGroup '{visGroupName}': "
+                f"{result[-3:]}"
+            )
         
         return visGroupId
         
@@ -1069,8 +1093,6 @@ def create_conflict_resolution_deltas(parent, conflictedDeltas):
         
         '''
         
-        objectClass, objectId = objectInfo
-        
         if useTiedSolidCorrection:
             parentObjectInfo = parent.get_object_parent_info(*objectInfo)
             if parentObjectInfo is not None:
@@ -1079,12 +1101,20 @@ def create_conflict_resolution_deltas(parent, conflictedDeltas):
                 if parentObjectClass == VMF.ENTITY:
                     assert objectClass == VMF.SOLID
                     
+                    print(
+                        f"Correcting VisGroup addition info "
+                        f"for tied solid {objectInfo} "
+                        f"to {parentObjectInfo}"
+                    )
+                    
                     # If we're adding a tied solid to a VisGroup, we
                     # should add the tied entity instead, since Hammer is
                     # dumb and doesn't correctly associate VisGroups with
                     # individual tied solids in an entity.
-                    objectClass, objectInfo = parentObjectInfo
+                    objectInfo = parentObjectInfo
                     
+        objectClass, objectId = objectInfo
+        
         newDelta = AddToVisGroup(objectClass, objectId, visgroupId)
         
         # Don't add this delta more than once.
@@ -1092,164 +1122,495 @@ def create_conflict_resolution_deltas(parent, conflictedDeltas):
             result.append(newDelta)
             newAddToVisGroupDeltas.add(newDelta)
             
+            if verbose:
+                print(f"Add {objectInfo} to VisGroup {visgroupId}: {newDelta}")
+                
+    if verbose:
+        print("*** CLONE PASS ***")
+    
+    conflictedNewObjectInfos = set()
+    
+    # First pass: Clone every object that needs to be cloned.
     for delta in conflictedDeltas:
         child = delta.originVMF
         
+        cloneIdForObjectInfoForChild[child] = {}
+        
+        if verbose:
+            print(
+                f"(Clone pass) Processing conflicted delta {delta} "
+                f"from {child.get_filename()}..."
+            )
         # Get information about the object that would have been affected by 
         # the delta's change.
         if (isinstance(delta, AddOutput)
                 or isinstance(delta, RemoveOutput)
-                or isinstance(delta, UntieSolid)
-                ):
-            affectedObjectClass = VMF.ENTITY
-            affectedObjectId = delta.entityId
+                or isinstance(delta, UntieSolid)):
+            cloneTargetClass = VMF.ENTITY
+            cloneTargetId = delta.entityId
             
         elif isinstance(delta, TieSolid):
             if parent.has_object(VMF.ENTITY, delta.entityId):
-                affectedObjectClass = VMF.ENTITY
-                affectedObjectId = delta.entityId
+                cloneTargetClass = VMF.ENTITY
+                cloneTargetId = delta.entityId
             else:
                 # If the affected entity is new, clone the solid instead.
-                affectedObjectClass = VMF.SOLID
-                affectedObjectId = delta.solidId
+                cloneTargetClass = VMF.SOLID
+                cloneTargetId = delta.solidId
                 
-        else:
-            affectedObjectClass = delta.vmfClass
-            affectedObjectId = delta.id
+        elif isinstance(delta, AddObject):
+            # No need to clone new objects, that would be weird and broken.
             
-        if affectedObjectClass in (VMF.WORLD, VMF.GROUP, VMF.VISGROUP):
+            if verbose:
+                print(
+                    f"Skipping clone because {delta} is an AddObject delta."
+                )
+                
+            newObjectInfo = (delta.vmfClass, delta.id)
+            
+            # Keep track of all the new objects that are conflicted, so that we
+            # don't ever try to clone them in any situation.
+            conflictedNewObjectInfos.add(newObjectInfo)
+            
+            # To drastically simplify things regarding conflicted deltas that
+            # point to the new object, pretend that the "clone" of the new
+            # object is itself.
+            try:
+                cloneIdForObjectInfo = cloneIdForObjectInfoForChild[child]
+            except KeyError:
+                cloneIdForObjectInfo = {}
+                cloneIdForObjectInfoForChild[child] = cloneIdForObjectInfo
+                
+            cloneIdForObjectInfo[newObjectInfo] = delta.id
+            
+            continue
+            
+        else:
+            cloneTargetClass = delta.vmfClass
+            cloneTargetId = delta.id
+            
+        if cloneTargetClass in (VMF.WORLD, VMF.GROUP, VMF.VISGROUP):
             # Do NOT touch the World, Groups, or VisGroups!
             # Those conflicts will just have to be fixed without the aid of 
             # conflict resolution VisGroups.
+            
+            if verbose:
+                print(
+                    f"Skipping clone because "
+                    f"clone target class is {cloneTargetClass}"
+                )
+                
             continue
             
-        elif affectedObjectClass == VMF.SIDE:
+        elif cloneTargetClass == VMF.SIDE:
             # The affected object should be the Side's parent, not the Side 
             # itself.
             parentClass, parentId = parent.get_object_parent_info(
-                affectedObjectClass, affectedObjectId
+                cloneTargetClass, cloneTargetId
             )
             
             assert parentClass == VMF.SOLID
             
-            affectedObjectClass = parentClass
-            affectedObjectId = parentId
+            cloneTargetClass = parentClass
+            cloneTargetId = parentId
             
-        if (affectedObjectClass == VMF.SOLID
-                and affectedObjectId in parent.entityIdForSolidId):
+        if (cloneTargetClass == VMF.SOLID
+                and cloneTargetId in parent.entityIdForSolidId):
             # If the affected object is a solid that has been tied to an 
             # Entity, the affected object should actually be the Entity, not 
             # the Solid.
             parentClass, parentId = parent.get_object_parent_info(
-                affectedObjectClass, affectedObjectId
+                cloneTargetClass, cloneTargetId
             )
             
             assert parentClass == VMF.ENTITY
             
-            affectedObjectClass = parentClass
-            affectedObjectId = parentId
+            cloneTargetClass = parentClass
+            cloneTargetId = parentId
             
-        affectedObjectInfo = (affectedObjectClass, affectedObjectId)
+        cloneTargetInfo = (cloneTargetClass, cloneTargetId)
         
-        if isinstance(delta, RemoveObject):
-            # Add the affected object to the child's removal conflict 
-            # resolution VisGroup.
-            childVisGroupId = get_removed_visgroup(child)
-            add_add_to_visgroup_delta(
-                affectedObjectInfo, childVisGroupId,
-                useTiedSolidCorrection=True,
+        if verbose:
+            print(f"Clone target is: {cloneTargetInfo}")
+            
+        if cloneTargetInfo in conflictedNewObjectInfos:
+            if verbose:
+                print(
+                    f"Skipping clone because {cloneTargetInfo} is a new object."
+                )
+                
+            continue
+            
+        if (isinstance(delta, RemoveObject)
+                and cloneTargetInfo == (delta.vmfClass, delta.id)):
+                
+            # If the clone target is actually the object that the RemoveObject
+            # delta points to, rather than one of that object's sub-objects,
+            # then we should not clone the object. Instead, we should add the
+            # original object to the child's removal VisGroup in the second
+            # pass.
+            
+            if verbose:
+                print(
+                    f"Skipping clone because {delta} points directly "
+                    f"at the clone target: {cloneTargetInfo}"
+                )
+                
+            continue
+            
+        try:
+            cloneIdForObjectInfo = cloneIdForObjectInfoForChild[child]
+        except KeyError:
+            cloneIdForObjectInfo = {}
+            cloneIdForObjectInfoForChild[child] = cloneIdForObjectInfo
+            
+        if cloneTargetInfo in cloneIdForObjectInfo:
+            # This object was already cloned; no need to do it again.
+            
+            if verbose:
+                print(
+                    f"Skipping clone because clone target {cloneTargetInfo} "
+                    f"was already cloned (existing clone info: "
+                    f"{cloneIdForObjectInfo[cloneTargetInfo]})"
+                )
+            
+            continue
+            
+        cloneIdsDict = {}
+        cloneDeltas = parent.clone_object_deferred(
+            cloneTargetClass, cloneTargetId,
+            cloneIdsDict=cloneIdsDict,
+        )
+        result += cloneDeltas
+        
+        if verbose:
+            print(f"Clone object {cloneTargetInfo}: {cloneDeltas}")
+            
+        assert cloneTargetInfo in cloneIdsDict
+        
+        # Add the clone IDs to the master clones dict for this child.
+        cloneIdForObjectInfo.update(cloneIdsDict)
+        
+        # Add the cloned object to the child's conflict resolution VisGroup.
+        cloneId = cloneIdForObjectInfo[cloneTargetInfo]
+        childVisGroupId = get_changed_visgroup(child)
+        add_add_to_visgroup_delta((cloneTargetClass, cloneId), childVisGroupId)
+        
+    def get_target_id(child, vmfClass, id):
+        '''Returns the object ID for the cloned version of the given object 
+        for a given child, or the object ID unchanged if no clone of that 
+        object exists for the child.
+        
+        '''
+        
+        try:
+            return cloneIdForObjectInfoForChild[child][(vmfClass, id)]
+        except KeyError:
+            return id
+            
+    if verbose:
+        print("*** MODIFICATIONS PASS ***")
+        
+    # Second pass: Add the conflicting deltas, modifying them to point at
+    # clones if necessary.
+    for delta in conflictedDeltas:
+        child = delta.originVMF
+        
+        cloneIdForObjectInfo = cloneIdForObjectInfoForChild[child]
+        
+        if verbose:
+            print(
+                f"Processing conflicted delta {delta} "
+                f"from {child.get_filename()}..."
             )
             
-        elif isinstance(delta, AddObject):
+        if isinstance(delta, AddObject):
             # Add the delta, since we need the object to exist before 
             # performing any other operations on it.
             result.append(delta)
             
+            if verbose:
+                print(delta)
+            
             # Add the affected object to the child's changed conflict 
             # resolution VisGroup.
             childVisGroupId = get_changed_visgroup(child)
-            add_add_to_visgroup_delta(affectedObjectInfo, childVisGroupId)
+            add_add_to_visgroup_delta(
+                (delta.vmfClass, delta.id),
+                childVisGroupId,
+            )
             
-        else:
-            # If the affected object is a new object, add it to the child's 
-            # conflict resolution VisGroup.
-            if not parent.has_object(*affectedObjectInfo):
-                # Add the delta; since the object is new, it probably needs
-                # this delta in order for it to be correctly constructed.
-                result.append(delta)
+        elif isinstance(delta, RemoveObject):
+            affectedObjectInfo = (delta.vmfClass, delta.id)
+            
+            if affectedObjectInfo in cloneIdForObjectInfo:
+                # If there is a clone of the affected object, point the delta
+                # at the clone.
+                cloneDelta = copy.copy(delta)
+                cloneDelta.id = cloneIdForObjectInfo[affectedObjectInfo]
                 
-                childVisGroupId = get_changed_visgroup(child)
-                add_add_to_visgroup_delta(affectedObjectInfo, childVisGroupId)
-                
-            # Otherwise, add the affected object to the parent's conflict
-            # resolution VisGroup, if it's not a new object.
-            else:
-                add_add_to_visgroup_delta(
-                    affectedObjectInfo, parentVisGroupId,
-                    useTiedSolidCorrection=True,
-                )
-                
-                # Clone the affected object, if this is the first time doing
-                # so for this child.
-                if (child not in cloneIdForObjectInfoForChild
-                        or affectedObjectInfo
-                            not in cloneIdForObjectInfoForChild[child]):
-                            
-                    cloneIdsDict = {}
-                    cloneDeltas = parent.clone_object_deferred(
-                        affectedObjectClass, affectedObjectId,
-                        cloneIdsDict=cloneIdsDict,
-                    )
-                    result += cloneDeltas
-                    
-                    assert affectedObjectInfo in cloneIdsDict
-                    
-                    # Add the clone IDs to the clones dict.
-                    try:
-                        cloneIdForObjectInfo = cloneIdForObjectInfoForChild[
-                            child
-                        ]
-                    except KeyError:
-                        cloneIdForObjectInfo = {}
-                        cloneIdForObjectInfoForChild[child] = (
-                            cloneIdForObjectInfo
+                # Fix up the cascaded removals as well.
+                # Probably not really necessary, but we may as well do it.
+                if delta.cascadedRemovals is not None:
+                    cloneDelta.cascadedRemovals = delta.cascadedRemovals[:]
+                    for i, subObjectInfo in enumerate(delta.cascadedRemovals):
+                        subClass, _ = subObjectInfo
+                        cloneDelta.cascadedRemovals[i] = (
+                            subClass, cloneIdForObjectInfo[subObjectInfo]
                         )
                         
-                    cloneIdForObjectInfo.update(cloneIdsDict)
+                result.append(cloneDelta)
+                
+                if verbose:
+                    print(f"Fixed up delta to target clones: {cloneDelta}")
                     
-                    # Get the clone's new ID.
-                    cloneId = cloneIdForObjectInfo[affectedObjectInfo]
+            else:
+                # Otherwise, add the affected object to the child's removal
+                # conflict resolution VisGroup.
+                childVisGroupId = get_removed_visgroup(child)
+                add_add_to_visgroup_delta(affectedObjectInfo, childVisGroupId)
+                
+                # We should never encounter a situation where a RemoveObject
+                # delta affecting a Side or a tied Solid would not be able to
+                # point to a valid clone.
+                assert delta.vmfClass != VMF.SIDE
+                assert (
+                    parent.get_object_parent_info(
+                            delta.vmfClass, delta.id
+                            ) is None
+                    or parent.get_object_parent_info(
+                        delta.vmfClass, delta.id
+                        )[0] != VMF.ENTITY
+                )
+                
+        elif isinstance(delta, TieSolid) or isinstance(delta, UntieSolid):
+            solidId = delta.solidId
+            
+            cloneDelta = copy.copy(delta)
+            
+            # Fix up the Solid ID to point at the clone.
+            # This should ALWAYS exist.
+            cloneDelta.solidId = cloneIdForObjectInfo[(VMF.SOLID, solidId)]
+            
+            if isinstance(delta, UntieSolid):
+                entityId = delta.entityId
+                
+                # Fix up the Entity ID to point at the clone.
+                # The clone may not exist if the entity itself is new.
+                try:
+                    cloneDelta.entityId = cloneIdForObjectInfo[
+                        (VMF.ENTITY, entityId)
+                    ]
+                except KeyError:
+                    # If there's no clone, then the entity must be new.
+                    assert not parent.has_object(VMF.ENTITY, delta.entityId)
                     
-                    # Get the child's conflict resolution VisGroup.
-                    childVisGroupId = get_changed_visgroup(child)
+            result.append(cloneDelta)
+            
+            if verbose:
+                print(f"Fixed up delta to target clones: {cloneDelta}")
+                
+        elif isinstance(delta, AddOutput) or isinstance(delta, RemoveOutput):
+            affectedObjectInfo = (delta.vmfClass, delta.entityId)
+            
+            cloneDelta = copy.copy(delta)
+            cloneDelta.entityId = cloneIdForObjectInfo[affectedObjectInfo]
+            result.append(cloneDelta)
+            
+            if verbose:
+                print(f"Fixed up delta to target clone: {cloneDelta}")
+                
+        else:
+            affectedObjectInfo = (delta.vmfClass, delta.id)
+            
+            cloneDelta = copy.copy(delta)
+            cloneDelta.id = cloneIdForObjectInfo[affectedObjectInfo]
+            result.append(cloneDelta)
+            
+            if verbose:
+                print(f"Fixed up delta to target clone: {cloneDelta}")
+                
+        # if (isinstance(delta, AddOutput)
+                # or isinstance(delta, RemoveOutput)
+                # or isinstance(delta, UntieSolid)):
+            # affectedObjectClass = VMF.ENTITY
+            # affectedObjectId = delta.entityId
+            
+        # elif isinstance(delta, TieSolid):
+            # if parent.has_object(VMF.ENTITY, delta.entityId):
+                # affectedObjectClass = VMF.ENTITY
+                # affectedObjectId = delta.entityId
+            # else:
+                # # If the affected entity is new, clone the solid instead.
+                # affectedObjectClass = VMF.SOLID
+                # affectedObjectId = delta.solidId
+                
+        # else:
+            # affectedObjectClass = delta.vmfClass
+            # affectedObjectId = delta.id
+            
+        # if affectedObjectClass in (VMF.WORLD, VMF.GROUP, VMF.VISGROUP):
+            # # Do NOT touch the World, Groups, or VisGroups!
+            # # Those conflicts will just have to be fixed without the aid of 
+            # # conflict resolution VisGroups.
+            # continue
+            
+        # elif affectedObjectClass == VMF.SIDE:
+            # # The affected object should be the Side's parent, not the Side 
+            # # itself.
+            # parentClass, parentId = parent.get_object_parent_info(
+                # affectedObjectClass, affectedObjectId
+            # )
+            
+            # assert parentClass == VMF.SOLID
+            
+            # affectedObjectClass = parentClass
+            # affectedObjectId = parentId
+            
+        # if (affectedObjectClass == VMF.SOLID
+                # and affectedObjectId in parent.entityIdForSolidId):
+            # # If the affected object is a solid that has been tied to an 
+            # # Entity, the affected object should actually be the Entity, not 
+            # # the Solid.
+            # parentClass, parentId = parent.get_object_parent_info(
+                # affectedObjectClass, affectedObjectId
+            # )
+            
+            # assert parentClass == VMF.ENTITY
+            
+            # affectedObjectClass = parentClass
+            # affectedObjectId = parentId
+            
+        # affectedObjectInfo = (affectedObjectClass, affectedObjectId)
+        
+        # if verbose:
+            # print(f"Affected object is: {affectedObjectInfo}")
+        
+        # if (isinstance(delta, RemoveObject)
+                # and affectedObjectInfo == (delta.vmfClass, delta.id)):
+            # # Add the affected object to the child's removal conflict 
+            # # resolution VisGroup.
+            # childVisGroupId = get_removed_visgroup(child)
+            
+            # add_add_to_visgroup_delta(
+                # affectedObjectInfo, childVisGroupId,
+                # useTiedSolidCorrection=True,
+            # )
+        
+            # # If the "affected object" is not the same as the object that the
+            # # delta is acting on, we should consider the "affected object" to
+            # # have been "changed" instead, since it is actually one of its
+            # # children that was removed, not the affected object itself.
+            # # This case should be handled in the `else` clause below.
+            
+        # elif isinstance(delta, AddObject):
+            # # Add the delta, since we need the object to exist before 
+            # # performing any other operations on it.
+            # result.append(delta)
+            
+            # if verbose:
+                # print(delta)
+            
+            # # Add the affected object to the child's changed conflict 
+            # # resolution VisGroup.
+            # childVisGroupId = get_changed_visgroup(child)
+            # add_add_to_visgroup_delta(affectedObjectInfo, childVisGroupId)
+            
+        # else:
+            # # If the affected object is a new object, add it to the child's 
+            # # conflict resolution VisGroup.
+            # if not parent.has_object(*affectedObjectInfo):
+                # # Add the delta; since the object is new, it probably needs
+                # # this delta in order for it to be correctly constructed.
+                # result.append(delta)
+                
+                # if verbose:
+                    # print(delta)
+                
+                # childVisGroupId = get_changed_visgroup(child)
+                # add_add_to_visgroup_delta(affectedObjectInfo, childVisGroupId)
+                
+            # # Otherwise, add the affected object to the parent's conflict
+            # # resolution VisGroup, if it's not a new object.
+            # else:
+                # add_add_to_visgroup_delta(
+                    # affectedObjectInfo, parentVisGroupId,
+                    # useTiedSolidCorrection=True,
+                # )
+                
+                # # Clone the affected object, if this is the first time doing
+                # # so for this child.
+                # if (child not in cloneIdForObjectInfoForChild
+                        # or affectedObjectInfo
+                            # not in cloneIdForObjectInfoForChild[child]):
+                            
+                    # cloneIdsDict = {}
+                    # cloneDeltas = parent.clone_object_deferred(
+                        # affectedObjectClass, affectedObjectId,
+                        # cloneIdsDict=cloneIdsDict,
+                    # )
+                    # result += cloneDeltas
                     
-                    # Add the cloned object to the conflict resolution 
-                    # VisGroup.
-                    add_add_to_visgroup_delta(
-                        (affectedObjectClass, cloneId), childVisGroupId,
-                        useTiedSolidCorrection=True,
-                    )
+                    # if verbose:
+                        # print(
+                            # f"Clone object {affectedObjectInfo}: {cloneDeltas}"
+                        # )
                     
-                    assert affectedObjectInfo in cloneIdForObjectInfo
+                    # assert affectedObjectInfo in cloneIdsDict
                     
-                    # Apply the conflicted delta to the cloned object.
-                    cloneDelta = copy.copy(delta)
-                    
-                    if isinstance(cloneDelta, TieSolid):
-                        if parent.has_object(VMF.ENTITY, cloneDelta.entityId):
-                            cloneDelta.entityId = cloneIdForObjectInfo[
-                                (VMF.ENTITY, cloneDelta.entityId)
-                            ]
-                        else:
-                            cloneDelta.solidId = cloneIdForObjectInfo[
-                                (VMF.SOLID, cloneDelta.solidId)
-                            ]
-                    else:
-                        cloneDelta.id = cloneIdForObjectInfo[
-                            (cloneDelta.vmfClass, cloneDelta.id)
-                        ]
+                    # # Add the clone IDs to the clones dict.
+                    # try:
+                        # cloneIdForObjectInfo = cloneIdForObjectInfoForChild[
+                            # child
+                        # ]
+                    # except KeyError:
+                        # cloneIdForObjectInfo = {}
+                        # cloneIdForObjectInfoForChild[child] = (
+                            # cloneIdForObjectInfo
+                        # )
                         
-                    result.append(cloneDelta)
+                    # cloneIdForObjectInfo.update(cloneIdsDict)
+                    
+                    # # Get the clone's new ID.
+                    # cloneId = cloneIdForObjectInfo[affectedObjectInfo]
+                    
+                    # # Get the child's conflict resolution VisGroup.
+                    # childVisGroupId = get_changed_visgroup(child)
+                    
+                    # # Add the cloned object to the conflict resolution 
+                    # # VisGroup.
+                    # add_add_to_visgroup_delta(
+                        # (affectedObjectClass, cloneId), childVisGroupId,
+                        # useTiedSolidCorrection=True,
+                    # )
+                    
+                # cloneIdForObjectInfo = cloneIdForObjectInfoForChild[child]
+                # assert affectedObjectInfo in cloneIdForObjectInfo
+                
+                # # Apply the conflicted delta to the cloned object.
+                # cloneDelta = copy.copy(delta)
+                
+                # if isinstance(cloneDelta, TieSolid):
+                    # if parent.has_object(VMF.ENTITY, cloneDelta.entityId):
+                        # cloneDelta.entityId = cloneIdForObjectInfo[
+                            # (VMF.ENTITY, cloneDelta.entityId)
+                        # ]
+                    # else:
+                        # cloneDelta.solidId = cloneIdForObjectInfo[
+                            # (VMF.SOLID, cloneDelta.solidId)
+                        # ]
+                # else:
+                    # cloneDelta.id = cloneIdForObjectInfo[
+                        # (cloneDelta.vmfClass, cloneDelta.id)
+                    # ]
+                    
+                # result.append(cloneDelta)
+                
+                # if verbose:
+                    # print(
+                        # f"Fixed up delta {delta} "
+                        # f"with clone ID: {cloneDelta}"
+                    # )
                     
     return result
     

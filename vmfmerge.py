@@ -89,9 +89,10 @@ def parse_args(argv):
     
 def do_merge(
         parent, children,
-        dumpIndividual=False, dumpProposed=False, aggressive=False,
-        noParentSideEffects=False,
-        update_callback=lambda *x: None
+        dumpIndividual=False, dumpProposed=False,
+        aggressive=False, verbose=False,
+        noParentSideEffects=False, noChildSideEffects=False,
+        update_callback=lambda *args, **kwargs: None
         ):
     """ Performs a merge of the given children's deltas into the parent.
     
@@ -105,6 +106,9 @@ def do_merge(
     
     If `noParentSideEffects` is True, this leaves the given parent VMF
     untouched, modifying a deep copy instead of the original.
+    
+    If `noChildSideEffects` is True, this leaves the given child VMFs untouched,
+    modifying deep copies instead of the originals.
     
     The `update_callback` will be called at each stage of the process with the
     following arguments:
@@ -130,6 +134,7 @@ def do_merge(
             self.progress = 0
             self.maxProgress = (
                 int(noParentSideEffects)
+                + int(noChildSideEffects) * len(children)
                 + len(children)
                 + self.NUM_MERGE_STEPS
             )
@@ -156,6 +161,9 @@ def do_merge(
             if postIncrement:
                 self.progress += 1
                 
+    # We're gonna be modifying this soon.
+    children = children[:]
+    
     progressTracker = ProgressTracker(children)
     
     # If we don't want side-effects on the parent VMF, we should deep-copy it.
@@ -163,6 +171,14 @@ def do_merge(
         progressTracker.update("Preparing parent VMF for merge...")
         parent = copy.deepcopy(parent)
         
+    # If we don't want side-effects on the child VMFs, we should deep-copy them.
+    if noChildSideEffects:
+        for i, child in enumerate(children):
+            progressTracker.update(
+                "Preparing {} for merge...".format(child.get_filename())
+            )
+            children[i] = copy.deepcopy(child)
+            
     # Generate lists of deltas for each child.
     deltaListForChild = OrderedDict()
     for i, child in enumerate(children):
@@ -212,7 +228,8 @@ def do_merge(
         progressTracker.update("Creating Manual Merge VisGroups...")
         
         conflictResolutionDeltas = create_conflict_resolution_deltas(
-            parent, conflictedDeltas
+            parent, conflictedDeltas,
+            verbose,
         )
         
         # print ""
@@ -303,7 +320,11 @@ def main(argv):
     children = [vmf for vmf in vmfs if vmf is not parent]
     
     # Go!
-    do_merge(parent, children, dumpIndividual, dumpProposed, aggressive)
+    do_merge(
+        parent, children,
+        dumpIndividual, dumpProposed,
+        aggressive, verbose,
+    )
     
     print("Total time: {}".format(datetime.now() - startTime))
     

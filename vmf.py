@@ -764,7 +764,57 @@ class VMF(object):
         # Done!
         return result
         
+    def fixup_side_ids(self, parentVMF):
+        ''' Finds all situations where a side was reparented, and fixes up
+        their IDs so that they have unique IDs rather than reused IDs.
         
+        This helps to avoid massive problems with merge conflict detection and
+        resolution in the situation where a solid was deleted, and its side IDs
+        were reused for a new solid.
+        
+        '''
+        
+        sidesToFix = []
+        
+        for side in self.iter_sides():
+            sideId = get_id(side)
+            if sideId not in parentVMF.sidesById:
+                continue
+                
+            parentSide = parentVMF.get_side(sideId)
+            
+            vmfClass, solidId = self.get_object_parent_info(VMF.SIDE, sideId)
+            assert vmfClass == VMF.SOLID
+            
+            vmfClass, parentSolidId = parentVMF.get_object_parent_info(
+                VMF.SIDE, sideId
+            )
+            assert vmfClass == VMF.SOLID
+            
+            if solidId != parentSolidId:
+                # This side was reparented. Fix up its ID to be unique instead.
+                sidesToFix.append(side)
+                
+        for side in sidesToFix:
+            oldId = get_id(side)
+            
+            newId = self.next_available_id(VMF.SIDE)
+            
+            # Change the object ID
+            side['id'] = newId
+            
+            assert self.sidesById[oldId] is side
+            
+            # Fix up the VMF sides dictionary
+            self.sidesById[newId] = side
+            del self.sidesById[oldId]
+            
+            # Fix up the parent lookup dictionary
+            parentInfo = self.parentInfoForObject[(VMF.SIDE, oldId)]
+            self.parentInfoForObject[(VMF.SIDE, newId)] = parentInfo
+            del self.parentInfoForObject[(VMF.SIDE, oldId)]
+            
+            
 def get_id(vmfObject, idPropName='id'):
     """ Returns the ID of the given VMF object. """
     return int(vmfObject[idPropName])
@@ -1003,6 +1053,11 @@ def compare_vmfs(parent, child):
     assert isinstance(parent, VMF)
     assert isinstance(child, VMF)
     
+    # NOTE: The use of VMF.fixup_side_ids() makes compare_vmfs() an impure
+    # function with side-effects on the child VMF object.
+    # YOU HAVE BEEN WARNED!!!!!
+    child.fixup_side_ids(parent)
+    
     # The list of VMFDeltas to be returned.
     deltas = []
     
@@ -1161,12 +1216,18 @@ def compare_vmfs(parent, child):
             changeObjectDeltaSet.add(newDelta)
             deltas.append(newDelta)
             
-            parentInfo = parent.get_object_parent_info(vmfClass, id)
-            
-            if parentInfo is None:
+            parentParentInfo = parent.get_object_parent_info(vmfClass, id)
+            if parentParentInfo is None:
                 break
                 
-            parentClass, parentId = parentInfo
+            childParentInfo = child.get_object_parent_info(vmfClass, id)
+            
+            # If the child object was actually reparented, don't add a
+            # ChangeObject delta to the object's parent in the parent VMF.
+            if parentParentInfo != childParentInfo:
+                break
+                
+            parentClass, parentId = parentParentInfo
             
             if parentClass == VMF.ENTITY:
                 assert vmfClass == VMF.SOLID
@@ -1184,7 +1245,7 @@ def compare_vmfs(parent, child):
                 # deltas where the solid was changed and the entire entity was 
                 # removed, including the solid.
                 
-            objectInfo = parentInfo
+            objectInfo = parentParentInfo
             
     # Check for changed/deleted objects.
     for vmfClass, parentObject in parent.iter_objects():
@@ -1229,6 +1290,8 @@ def compare_vmfs(parent, child):
                 else:
                     newParentInfo = None
                     
+                assert vmfClass != VMF.SIDE
+                
                 newDelta = ReparentObject(newParentInfo, vmfClass, id)
                 deltas.append(newDelta)
                 

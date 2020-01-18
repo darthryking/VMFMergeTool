@@ -391,7 +391,7 @@ class MainWindow(BaseWindow):
             
             return vmfmerge.do_merge(
                 parent, children,
-                noParentSideEffects=True,
+                noParentSideEffects=True, noChildSideEffects=True,
                 update_callback=self.mergeWindow.update_merge_progress,
             )
             
