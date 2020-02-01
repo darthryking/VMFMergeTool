@@ -3,13 +3,13 @@
 vmfmerge.py
 By DKY
 
-Version 0.1.1 BETA
+Version 0.1.2 BETA
 
 VMF Merge Tool
 
 """
 
-__version__ = '0.1.1 BETA'
+__version__ = '0.1.2 BETA'
 
 import os
 import sys
