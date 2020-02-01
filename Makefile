@@ -13,6 +13,7 @@ gui:
 		--upx-exclude msvcp140.dll \
 		--upx-exclude qwindows.dll \
 		--upx-exclude qwindowsvistastyle.dll \
+		--upx-exclude ucrtbase.dll \
 		--add-data './icon.png:.' \
 		--add-data './vmfmerge.ui:.' \
 		--add-data './loadvmfsdialog.ui:.' \
@@ -28,6 +29,7 @@ gui-debug:
 		--upx-exclude msvcp140.dll \
 		--upx-exclude qwindows.dll \
 		--upx-exclude qwindowsvistastyle.dll \
+		--upx-exclude ucrtbase.dll \
 		--add-data './icon.png:.' \
 		--add-data './vmfmerge.ui:.' \
 		--add-data './loadvmfsdialog.ui:.' \
@@ -40,6 +42,7 @@ cli:
 		--onefile \
 		--upx-exclude vcruntime140.dll \
 		--upx-exclude msvcp140.dll \
+		--upx-exclude ucrtbase.dll \
 
 clean:
 	-rm -rf build/*
