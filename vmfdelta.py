@@ -1134,8 +1134,9 @@ def create_conflict_resolution_deltas(parent, conflictedDeltas, verbose=False):
     for delta in conflictedDeltas:
         child = delta.originVMF
         
-        cloneIdForObjectInfoForChild[child] = {}
-        
+        if child not in cloneIdForObjectInfoForChild:
+            cloneIdForObjectInfoForChild[child] = {}
+            
         if verbose:
             print(
                 f"(Clone pass) Processing conflicted delta {delta} "
