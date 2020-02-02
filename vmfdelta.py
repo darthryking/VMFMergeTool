@@ -1297,6 +1297,12 @@ def create_conflict_resolution_deltas(parent, conflictedDeltas, verbose=False):
         childVisGroupId = get_changed_visgroup(child)
         add_add_to_visgroup_delta((cloneTargetClass, cloneId), childVisGroupId)
         
+        # Add the original object to the parent's conflict resolution VisGroup.
+        add_add_to_visgroup_delta(
+            (cloneTargetClass, cloneTargetId),
+            parentVisGroupId,
+        )
+        
     def get_target_id(child, vmfClass, id):
         '''Returns the object ID for the cloned version of the given object 
         for a given child, or the object ID unchanged if no clone of that 
@@ -1377,8 +1383,8 @@ def create_conflict_resolution_deltas(parent, conflictedDeltas, verbose=False):
                 assert delta.vmfClass != VMF.SIDE
                 assert (
                     parent.get_object_parent_info(
-                            delta.vmfClass, delta.id
-                            ) is None
+                        delta.vmfClass, delta.id
+                        ) is None
                     or parent.get_object_parent_info(
                         delta.vmfClass, delta.id
                         )[0] != VMF.ENTITY
