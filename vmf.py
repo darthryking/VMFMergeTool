@@ -506,11 +506,17 @@ class VMF(object):
                 parent = self.vmfData
                 
         else:
-            parent = self.get_object(*parentInfo)
+            parentClass, parentId = parentInfo
+            parent = self.get_object(parentClass, parentId)
             
             # Update the parent dictionary with the object's new parent info.
             self.parentInfoForObject[(vmfClass, id)] = parentInfo
             
+            # Update the entity-solid relationship map, if this is a solid
+            # that's being tied to a brush entity.
+            if parentClass == VMF.ENTITY and vmfClass == VMF.SOLID:
+                self.entityIdForSolidId[id] = parentId
+                
         assert isinstance(parent, dict)
         
         add_object_entry(parent, vmfClass, vmfObject)
@@ -546,7 +552,7 @@ class VMF(object):
         
         remove_object_entry(parent, vmfClass, vmfObject)
         
-    def apply_deltas(self, deltas, incrementRevision=True):
+    def apply_deltas(self, deltas, incrementRevision=True, verbose=False):
         ''' Applies the given deltas to the VMF data and increments the VMF 
         revision number.
         
@@ -678,8 +684,20 @@ class VMF(object):
                 )
                 
             elif isinstance(delta, AddToVisGroup):
-                vmfObject = self.get_object(delta.vmfClass, delta.id)
-                
+                try:
+                    vmfObject = self.get_object(delta.vmfClass, delta.id)
+                except VMF.ObjectDoesNotExist:
+                    # This can happen if we attempt to add an object to a
+                    # conflict resolution VisGroup because one of its
+                    # sub-objects was altered, but the top-level target object
+                    # was set to be deleted anyway.
+                    if verbose:
+                        print(
+                            f"Skipping {delta} because VMF Object "
+                            f"({delta.vmfClass}, {delta.id}) does not exist!"
+                        )
+                    continue
+                    
                 visGroupsSet = get_object_visgroups(vmfObject)
                 visGroupsSet.add(delta.visGroupId)
                 
@@ -1109,87 +1127,7 @@ def compare_vmfs(parent, child):
             newDelta = RemoveFromVisGroup(vmfClass, id, visGroupId)
             deltas.append(newDelta)
             
-    # Check for new objects
-    for vmfClass, childObject in child.iter_objects():
-        id = get_id(
-            childObject,
-            idPropName='visgroupid' if vmfClass == VMF.VISGROUP else 'id',
-        )
-        
-        if not parent.has_object(vmfClass, id):
-            # Assign a new ID to this new object.
-            # NOTE: The use of VMF.next_available_id() makes compare_vmfs() an 
-            # impure function with side-effects on the parent VMF object.
-            # YOU HAVE BEEN WARNED!!!!!
-            newId = parent.next_available_id(vmfClass)
-            
-            # Keep track of the relationship between the child object's ID and 
-            # its new ID as part of the parent.
-            newIdForNewChildObject[(vmfClass, id)] = newId
-            
-            # Get the parent information for the new object.
-            newObjectParentInfo = child.get_object_parent_info(vmfClass, id)
-            
-            # The new object's designated parent object might also be a new 
-            # object. If so, correlate it with the proper new ID.
-            if newObjectParentInfo in newIdForNewChildObject:
-                newObjectParentId = newIdForNewChildObject[newObjectParentInfo]
-                newObjectParentInfo = (
-                    newObjectParentInfo[0],
-                    newObjectParentId,
-                )
-                
-            newDelta = AddObject(newObjectParentInfo, vmfClass, newId)
-            deltas.append(newDelta)
-            
-            # Add each of the object's properties.
-            for key, value in iter_properties(childObject):
-                if vmfClass == VMF.VISGROUP:
-                    if key in (VMF.VISGROUP, 'visgroupid'):
-                        # Don't add child VisGroup objects as new properties 
-                        # of a parent VisGroup, and don't add the 'visgroupid' 
-                        # key of a VisGroup object as a new property.
-                        continue
-                        
-                if key == VMF.VISGROUP_PROPERTY_PATH:
-                    # Special-case an object's VisGroup properties.
-                    if not isinstance(value, list):
-                        value = [value]
-                        
-                    add_visgroup_deltas(vmfClass, newId, [], value)
-                    
-                else:
-                    if key == VMF.GROUP_PROPERTY_PATH:
-                        # The group ID needs to be updated with the correct 
-                        # group ID as part of the parent.
-                        childGroupID = int(value)
-                        value = str(
-                            newIdForNewChildObject.get(
-                                (VMF.GROUP, childGroupID),
-                                childGroupID,
-                            )
-                        )
-                        
-                    # Add the property as an AddProperty delta.
-                    newDelta = AddProperty(vmfClass, newId, key, value)
-                    deltas.append(newDelta)
-                    
-                    # If this is an entity that has a 'sides' property, we'll 
-                    # need to fix up its brush face references later.
-                    if (vmfClass == VMF.ENTITY
-                            and childObject['classname']
-                                in SIDES_ENTITY_CLASSNAMES
-                            and key == 'sides'):
-                        sidesPropertyDeltas.append(newDelta)
-                        
-            # Add each of the object's outputs as an AddOutput delta, if the 
-            # object is an entity.
-            if vmfClass == VMF.ENTITY:
-                for output, value, outputId in iter_outputs(childObject):
-                    newDelta = AddOutput(newId, output, value, outputId)
-                    deltas.append(newDelta)
-                    
-    # Set to keep track of all the ObjectChanged deltas we've added.
+    # Set to keep track of all the ChangeObject deltas we've added.
     changeObjectDeltaSet = set()
     
     def add_change_object_deltas(vmfClass, id):
@@ -1247,6 +1185,89 @@ def compare_vmfs(parent, child):
                 
             objectInfo = parentParentInfo
             
+    # Check for new objects
+    for vmfClass, childObject in child.iter_objects():
+        id = get_id(
+            childObject,
+            idPropName='visgroupid' if vmfClass == VMF.VISGROUP else 'id',
+        )
+        
+        if not parent.has_object(vmfClass, id):
+            # Assign a new ID to this new object.
+            # NOTE: The use of VMF.next_available_id() makes compare_vmfs() an 
+            # impure function with side-effects on the parent VMF object.
+            # YOU HAVE BEEN WARNED!!!!!
+            newId = parent.next_available_id(vmfClass)
+            
+            # Keep track of the relationship between the child object's ID and 
+            # its new ID as part of the parent.
+            newIdForNewChildObject[(vmfClass, id)] = newId
+            
+            # Get the parent information for the new object.
+            newObjectParentInfo = child.get_object_parent_info(vmfClass, id)
+            
+            # The new object's designated parent object might also be a new 
+            # object. If so, correlate it with the proper new ID.
+            if newObjectParentInfo in newIdForNewChildObject:
+                newObjectParentId = newIdForNewChildObject[newObjectParentInfo]
+                newObjectParentInfo = (
+                    newObjectParentInfo[0],
+                    newObjectParentId,
+                )
+                
+            if newObjectParentInfo is not None:
+                add_change_object_deltas(*newObjectParentInfo)
+                
+            newDelta = AddObject(newObjectParentInfo, vmfClass, newId)
+            deltas.append(newDelta)
+            
+            # Add each of the object's properties.
+            for key, value in iter_properties(childObject):
+                if vmfClass == VMF.VISGROUP:
+                    if key in (VMF.VISGROUP, 'visgroupid'):
+                        # Don't add child VisGroup objects as new properties 
+                        # of a parent VisGroup, and don't add the 'visgroupid' 
+                        # key of a VisGroup object as a new property.
+                        continue
+                        
+                if key == VMF.VISGROUP_PROPERTY_PATH:
+                    # Special-case an object's VisGroup properties.
+                    if not isinstance(value, list):
+                        value = [value]
+                        
+                    add_visgroup_deltas(vmfClass, newId, [], value)
+                    
+                else:
+                    if key == VMF.GROUP_PROPERTY_PATH:
+                        # The group ID needs to be updated with the correct 
+                        # group ID as part of the parent.
+                        childGroupID = int(value)
+                        value = str(
+                            newIdForNewChildObject.get(
+                                (VMF.GROUP, childGroupID),
+                                childGroupID,
+                            )
+                        )
+                        
+                    # Add the property as an AddProperty delta.
+                    newDelta = AddProperty(vmfClass, newId, key, value)
+                    deltas.append(newDelta)
+                    
+                    # If this is an entity that has a 'sides' property, we'll 
+                    # need to fix up its brush face references later.
+                    if (vmfClass == VMF.ENTITY
+                            and childObject['classname']
+                                in SIDES_ENTITY_CLASSNAMES
+                            and key == 'sides'):
+                        sidesPropertyDeltas.append(newDelta)
+                        
+            # Add each of the object's outputs as an AddOutput delta, if the 
+            # object is an entity.
+            if vmfClass == VMF.ENTITY:
+                for output, value, outputId in iter_outputs(childObject):
+                    newDelta = AddOutput(newId, output, value, outputId)
+                    deltas.append(newDelta)
+                    
     # Check for changed/deleted objects.
     for vmfClass, parentObject in parent.iter_objects():
         id = get_id(
@@ -1258,7 +1279,10 @@ def compare_vmfs(parent, child):
             childObject = child.get_object(vmfClass, id)
         except VMF.ObjectDoesNotExist:
             # Object was deleted.
-            childInfos = list(parent.iter_sub_object_infos(vmfClass, id))
+            childInfos = [
+                info for info in parent.iter_sub_object_infos(vmfClass, id)
+                if not child.has_object(*info)
+            ]
             
             if childInfos:
                 newDelta = RemoveObject(vmfClass, id, childInfos)
@@ -1286,6 +1310,8 @@ def compare_vmfs(parent, child):
                     )
                     
                     newParentInfo = (parentClass, newParentId)
+                    
+                    add_change_object_deltas(*newParentInfo)
                     
                 else:
                     newParentInfo = None
@@ -1425,25 +1451,28 @@ def compare_vmfs(parent, child):
             newDelta = TieSolid(solidId, newEntityId)
             deltas.append(newDelta)
             
-        elif parent.entityIdForSolidId[solidId] != entityId:
-            # This solid was untied and retied to a different entity.
-            # Create an UntieSolid and a TieSolid delta to simulate this.
-            newId = newIdForNewChildObject.get(
-                (VMF.ENTITY, entityId),
-                entityId,
-            )
+        else:
+            parentEntityId = parent.entityIdForSolidId[solidId]
             
-            add_change_object_deltas(VMF.SOLID, solidId)
-            add_change_object_deltas(VMF.ENTITY, newId)
-            
-            deltas.append(UntieSolid(solidId))
-            deltas.append(TieSolid(solidId, newId))
-            
+            if parentEntityId != entityId:
+                # This solid was untied and retied to a different entity.
+                # Create an UntieSolid and a TieSolid delta to simulate this.
+                newId = newIdForNewChildObject.get(
+                    (VMF.ENTITY, entityId),
+                    entityId,
+                )
+                
+                add_change_object_deltas(VMF.SOLID, solidId)
+                add_change_object_deltas(VMF.ENTITY, newId)
+                
+                deltas.append(UntieSolid(solidId, parentEntityId))
+                deltas.append(TieSolid(solidId, newId))
+                
     # Check for untied solids.
     for solidId, entityId in parent.entityIdForSolidId.items():
         if (solidId not in child.entityIdForSolidId
                 and child.has_object(VMF.SOLID, solidId)):
-            newDelta = UntieSolid(solidId)
+            newDelta = UntieSolid(solidId, entityId)
             deltas.append(newDelta)
             
     # Fix up cubemap and overlay deltas, which probably point to the wrong 

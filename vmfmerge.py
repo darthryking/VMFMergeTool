@@ -210,7 +210,11 @@ def do_merge(
     deltaLists = list(deltaListForChild.values())
     
     try:
-        mergedDeltas = merge_delta_lists(deltaLists, aggressive=aggressive)
+        mergedDeltas = merge_delta_lists(
+            deltaLists,
+            aggressive=aggressive,
+            verbose=verbose,
+        )
         
     except DeltaMergeConflict as e:
         print(str(e))
@@ -229,13 +233,14 @@ def do_merge(
         
         conflictResolutionDeltas = create_conflict_resolution_deltas(
             parent, conflictedDeltas,
-            verbose,
+            verbose=verbose,
         )
         
-        # print ""
-        # print "Conflict resolution deltas:"
-        # print '\n'.join(repr(delta) for delta in conflictResolutionDeltas)
-        # print ""
+        if verbose:
+            print()
+            print("Conflict resolution deltas:")
+            print('\n'.join(repr(delta) for delta in conflictResolutionDeltas))
+            print()
         
         mergedDeltas += conflictResolutionDeltas
         
@@ -249,7 +254,7 @@ def do_merge(
         
     # Apply the merged deltas to the parent.
     progressTracker.update("Applying deltas...")
-    parent.apply_deltas(mergedDeltas)
+    parent.apply_deltas(mergedDeltas, verbose=verbose)
     
     # Write the mutated parent to the target VMF path.
     progressTracker.update("Writing merged VMF...")
