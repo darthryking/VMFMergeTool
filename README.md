@@ -16,7 +16,7 @@ VMFMerge merges VMF sources in a process consisting of four stages:
 
 4. Finally, the tool goes through the master delta list and "replays" each delta on top of the parent VMF. The result is a merged VMF consisting of all the changes made in each of the children, applied to the parent.
 
-Current version: ***0.1.3 BETA***
+Current version: ***0.1.2 BETA***
 
 
 ### GUI Usage
